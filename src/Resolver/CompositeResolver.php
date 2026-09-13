@@ -23,6 +23,7 @@ final class CompositeResolver implements MiddlewareResolverInterface, Middleware
      * @var array<MiddlewareResolverInterface>
      */
     private array $resolvers = [];
+    private ?MiddlewareFactory $factory = null;
 
     /**
      * Creates a new composite resolver.
@@ -43,6 +44,8 @@ final class CompositeResolver implements MiddlewareResolverInterface, Middleware
      */
     public function setMiddlewareFactory(MiddlewareFactory $factory): void
     {
+        $this->factory = $factory;
+
         foreach ($this->resolvers as $resolver) {
             if ($resolver instanceof MiddlewareFactoryAwareInterface) {
                 $resolver->setMiddlewareFactory($factory);
@@ -81,6 +84,10 @@ final class CompositeResolver implements MiddlewareResolverInterface, Middleware
      */
     public function add(MiddlewareResolverInterface $resolver, bool $prepend = false): self
     {
+        if ($this->factory !== null && $resolver instanceof MiddlewareFactoryAwareInterface) {
+            $resolver->setMiddlewareFactory($this->factory);
+        }
+
         $prepend ? array_unshift($this->resolvers, $resolver) :
             $this->resolvers[] = $resolver;
 
