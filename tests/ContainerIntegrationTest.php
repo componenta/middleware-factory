@@ -7,6 +7,8 @@ namespace Componenta\Http\Middleware\Tests;
 use Componenta\Config\ConfigFactory;
 use Componenta\Config\ConfigKey;
 use Componenta\Config\Environment;
+use Componenta\DI\Attribute\CurrentRequest;
+use Componenta\DI\Attribute\Header;
 use Componenta\DI\ContainerFactory;
 use Componenta\Http\Middleware\ConfigProvider;
 use Componenta\Http\Middleware\MiddlewareFactory;
@@ -29,7 +31,7 @@ it('configures the factory, opaque service identifiers, callable injection and p
     $composition = (new ConfigFactory())->create(new Environment([]), new ConfigProvider(),
         static fn (): array => [ConfigKey::DEPENDENCIES => [ConfigKey::SERVICES => [
             'middleware.test' => $middleware,
-            'group.test' => new MiddlewareGroup('middleware.test', static fn (ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface => $handler->handle($request)),
+            'group.test' => new MiddlewareGroup('middleware.test', static fn (#[CurrentRequest] ServerRequestInterface $request, RequestHandlerInterface $handler, #[Header('X-Input')] string $input): ResponseInterface => $handler->handle($request)->withHeader('X-Resolved', $input)),
         ]]]);
     $container = (new ContainerFactory())->create($composition->config, $composition->dependencies)->container;
     $factory = $container->get(MiddlewareFactory::class);
@@ -43,8 +45,12 @@ it('configures the factory, opaque service identifiers, callable injection and p
 
     expect($pipelineFactory)->toBeInstanceOf(PipelineFactoryInterface::class)
         ->and($factory->createMiddleware('middleware.test'))->toBe($middleware);
-    $response = $factory->createMiddleware('group.test')->process(new ServerRequest('GET', '/configured'), $terminal);
-    expect($response->getStatusCode())->toBe(202)
-        ->and($response->getHeaderLine('X-Test'))->toBe('yes')
-        ->and((string) $response->getBody())->toBe('/configured');
+    $group = $factory->createMiddleware('group.test');
+    foreach (['first', 'second'] as $input) {
+        $response = $group->process(new ServerRequest('GET', '/' . $input, ['X-Input' => $input]), $terminal);
+        expect($response->getStatusCode())->toBe(202)
+            ->and($response->getHeaderLine('X-Test'))->toBe('yes')
+            ->and($response->getHeaderLine('X-Resolved'))->toBe($input)
+            ->and((string) $response->getBody())->toBe('/' . $input);
+    }
 });

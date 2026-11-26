@@ -11,6 +11,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use InvalidArgumentException;
 use UnexpectedValueException;
 
 /** Adapts a resolved callable to PSR-15. Legacy signatures require explicit opt-in. */
@@ -37,6 +38,9 @@ final readonly class CallableAdapter implements MiddlewareInterface
                 : Closure::fromCallable($callable);
         } elseif (is_array($callable)) {
             $callable = [$callable[0], $callable[1]];
+        }
+        if (!is_callable($callable)) {
+            throw new InvalidArgumentException('Resolved middleware target is not callable.');
         }
         $this->callable = $callable;
     }

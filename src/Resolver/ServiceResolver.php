@@ -6,6 +6,7 @@ namespace Componenta\Http\Middleware\Resolver;
 
 use Closure;
 use Componenta\Http\Middleware\Exception\MiddlewareResolutionException;
+use Componenta\Http\Middleware\Exception\MiddlewareResolutionExceptionInterface;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Throwable;
@@ -29,6 +30,8 @@ final readonly class ServiceResolver
             }
 
             return $adapt($this->container->get($id));
+        } catch (MiddlewareResolutionExceptionInterface $e) {
+            throw $e;
         } catch (Throwable $e) {
             throw MiddlewareResolutionException::fromPrevious($id, $e);
         }

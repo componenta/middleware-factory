@@ -27,7 +27,7 @@ final readonly class CallableResolver implements MiddlewareResolverInterface
             return null;
         }
         if (is_array($middleware)
-            && (array_keys($middleware) !== [0, 1]
+            && (count($middleware) !== 2 || !array_key_exists(0, $middleware) || !array_key_exists(1, $middleware)
                 || !(is_string($middleware[0]) || is_object($middleware[0]))
                 || !is_string($middleware[1]))
         ) {

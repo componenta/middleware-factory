@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Componenta\Http\Middleware\Adapter;
 
 use Psr\Http\Message\ResponseInterface;
@@ -7,7 +9,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
-final class RequestHandlerAdapter implements MiddlewareInterface, RequestHandlerInterface
+final readonly class RequestHandlerAdapter implements MiddlewareInterface, RequestHandlerInterface
 {
     /**
      * Request attribute key for storing the fallback handler.
@@ -31,7 +33,7 @@ final class RequestHandlerAdapter implements MiddlewareInterface, RequestHandler
      *                                         middleware processing and direct handling.
      */
     public function __construct(
-        private readonly RequestHandlerInterface $handler,
+        private RequestHandlerInterface $handler,
     ) {
     }
 
