@@ -1,5 +1,7 @@
 # Componenta Middleware Factory
 
+Supports Componenta Config 3 or 4, DI 5 or 6, and Reflection 2 or 3. DI 6 requires PHP 8.5.13 or newer.
+
 PSR-15 middleware resolver and group factory.
 
 Use this package when routes, modules, or config files need to describe middleware as class names, service ids, callables, existing middleware instances, or named groups, while the runtime always receives concrete `MiddlewareInterface` instances.

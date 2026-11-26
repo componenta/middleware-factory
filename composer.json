@@ -6,14 +6,14 @@
     "require": {
         "php": "^8.4",
         "componenta/arrayable": "^1.0",
-        "componenta/di": "^5.0.0",
+        "componenta/di": "^5.0 || ^6.0",
         "componenta/http-responder": "^1.0.3",
         "componenta/pipeline": "^1.0",
-        "componenta/reflection": "^2.0.1",
+        "componenta/reflection": "^2.0.1 || ^3.0",
         "psr/container": "^2.0",
         "psr/http-message": "^2.0",
         "psr/http-server-middleware": "^1.0",
-        "componenta/config": "^3.0.0"
+        "componenta/config": "^3.0 || ^4.0"
     },
     "autoload": {
         "psr-4": {
@@ -33,7 +33,8 @@
             ]
         },
         "branch-alias": {
-            "dev-main": "2.1.x-dev"
+            "dev-main": "2.1.x-dev",
+            "dev-fix/callback-dependency-baseline-2026-11-26": "2.1.x-dev"
         }
     },
     "require-dev": {
