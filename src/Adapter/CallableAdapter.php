@@ -77,20 +77,35 @@ final readonly class CallableAdapter implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        $result = $this->invoker->call($this->callable, [
+        $parameters = [
             ServerRequestInterface::class => $request,
             RequestHandlerInterface::class => $handler,
-        ]);
+        ];
+        $adapter = $this;
+        $result = $adapter->invoker->call($adapter->callable, $parameters);
+
+        // Follow only automatically returned callable adapters. Keep the
+        // visited instances alive to prevent reuse of their object ids.
+        $visited = [];
+        while ($result instanceof self) {
+            if ($result === $adapter) {
+                throw new UnexpectedValueException('Callable returned its own middleware adapter.');
+            }
+
+            $visited[spl_object_id($adapter)] = $adapter;
+            if (isset($visited[spl_object_id($result)])) {
+                throw new UnexpectedValueException('Cyclic callable middleware result.');
+            }
+
+            $adapter = $result;
+            $result = $adapter->invoker->call($adapter->callable, $parameters);
+        }
 
         if ($result instanceof ResponseInterface) {
             return $result;
         }
 
         if ($result instanceof MiddlewareInterface) {
-            if ($result === $this) {
-                throw new UnexpectedValueException('Callable returned its own middleware adapter.');
-            }
-
             return $result->process($request, $handler);
         }
 
@@ -98,8 +113,8 @@ final readonly class CallableAdapter implements MiddlewareInterface
             return $result->handle($request);
         }
 
-        if ($this->normalizer !== null) {
-            return ($this->normalizer)($result);
+        if ($adapter->normalizer !== null) {
+            return ($adapter->normalizer)($result);
         }
 
         throw new UnexpectedValueException(sprintf(

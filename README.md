@@ -57,6 +57,8 @@ By default, a callable must return one of:
 - `MiddlewareInterface` (processed with the same request and continuation).
 - `RequestHandlerInterface` (handled directly with the same request).
 
+Automatically returned callable adapters are followed with the same request and continuation. Returning an adapter already visited in that result chain throws `UnexpectedValueException`; explicit application reentry is not restricted by this check.
+
 Other return values cause `UnexpectedValueException`. A normalization closure may be explicitly configured on `CallableResolver` or passed to `CallableAdapter::fromCallable()`. Its result must be a PSR-7 response; failures propagate unchanged. There is no implicit responder service lookup. To configure normalization for the default factory, replace the `CallableResolver::class` entry in `Componenta\Config\ConfigKey::FACTORIES` after the package provider. Do not add a second binding in `SERVICES`.
 
 Request handlers are terminal by default, but an adapted request handler may explicitly delegate using the request attribute `RequestHandlerAdapter::FALLBACK_HANDLER_ATTRIBUTES_KEY`. The original request is not modified. Do not retain the request or its continuation beyond processing. Direct calls to an adapter's `handle()` do not add this attribute.

@@ -104,3 +104,21 @@ it('preserves each returned adapter normalizer and forwards the original HTTP co
     }
     expect($calls)->toBe(['first', 'middle', 'last', 'first', 'middle', 'last']);
 });
+
+
+it('does not reject explicit application reentry with a different request', function (): void {
+    $adapter = null;
+    $adapter = CallableAdapter::fromCallable(
+        static function (#[CurrentRequest] ServerRequestInterface $request, RequestHandlerInterface $next) use (&$adapter): ResponseInterface {
+            if ($request->getUri()->getPath() === '/outer') {
+                return $adapter->process($request->withUri($request->getUri()->withPath('/inner')), $next);
+            }
+            return $next->handle($request);
+        },
+        executor(),
+    );
+
+    $response = $adapter->process(new ServerRequest('GET', '/outer'), terminal());
+    expect($response->getStatusCode())->toBe(202)
+        ->and((string) $response->getBody())->toBe('/inner');
+});
