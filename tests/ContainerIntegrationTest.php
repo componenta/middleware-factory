@@ -10,10 +10,13 @@ use Componenta\Config\Environment;
 use Componenta\DI\Attribute\CurrentRequest;
 use Componenta\DI\Attribute\Header;
 use Componenta\DI\ContainerFactory;
+use Componenta\DI\CallableExecutorInterface;
 use Componenta\Http\Middleware\ConfigProvider;
 use Componenta\Http\Middleware\ConfigKey as MiddlewareConfigKey;
 use Componenta\Http\Middleware\PipelineConfigProvider;
 use Componenta\Http\Middleware\Resolver\MiddlewareResolverInterface;
+use Componenta\Http\Middleware\Resolver\CallableResolver;
+use Psr\Container\ContainerInterface;
 use Componenta\Http\Middleware\MiddlewareFactory;
 use Componenta\Http\Middleware\MiddlewareGroup;
 use Componenta\Http\Middleware\PipelineFactoryInterface;
@@ -90,4 +93,39 @@ it('composes both providers and resolves configured extension services before co
 
     expect($factory->createMiddleware('custom'))->toBe($middleware)
         ->and($container->get(PipelineFactoryInterface::class))->toBeInstanceOf(PipelineFactoryInterface::class);
+});
+
+
+it('allows applications to replace the callable resolver factory with an explicit response normalizer', function (): void {
+    $composition = (new ConfigFactory())->create(
+        new Environment([]),
+        new ConfigProvider(),
+        static fn (): array => [
+            ConfigKey::DEPENDENCIES => [
+                ConfigKey::FACTORIES => [
+                    CallableResolver::class => static fn (ContainerInterface $container): CallableResolver => new CallableResolver(
+                        $container->get(CallableExecutorInterface::class),
+                        static fn (mixed $result): ResponseInterface => new Response(201, [], json_encode($result, JSON_THROW_ON_ERROR)),
+                    ),
+                ],
+            ],
+        ],
+    );
+    $container = (new ContainerFactory())->create($composition->config, $composition->dependencies)->container;
+    $factory = $container->get(MiddlewareFactory::class);
+    $middleware = $factory->createMiddleware(static fn (#[CurrentRequest] ServerRequestInterface $request): array => [
+        'path' => $request->getUri()->getPath(),
+    ]);
+    $terminal = new class implements RequestHandlerInterface {
+        public function handle(ServerRequestInterface $request): ResponseInterface
+        {
+            throw new \LogicException('The callback should produce a response without delegation.');
+        }
+    };
+
+    foreach (['/first', '/second'] as $path) {
+        $response = $middleware->process(new ServerRequest('GET', $path), $terminal);
+        expect($response->getStatusCode())->toBe(201)
+            ->and(json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR))->toBe(['path' => $path]);
+    }
 });

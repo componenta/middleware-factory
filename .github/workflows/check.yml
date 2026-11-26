@@ -23,5 +23,6 @@ jobs:
           composer config repositories.componenta-di vcs https://github.com/componenta/di
           composer require --no-update 'componenta/di:dev-main as 6.0.x-dev'
           composer update --no-interaction --prefer-dist
+      - run: composer audit --locked --no-dev
       - run: composer check
       - run: composer benchmark
