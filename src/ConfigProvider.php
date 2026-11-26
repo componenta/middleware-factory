@@ -5,33 +5,29 @@ declare(strict_types=1);
 namespace Componenta\Http\Middleware;
 
 use Componenta\Http\Middleware\Factory\CallableResolverFactory;
-use Componenta\Http\Middleware\Factory\ClassNameResolverFactory;
 use Componenta\Http\Middleware\Factory\CompositeResolverFactory;
-use Componenta\Http\Middleware\Factory\LegacyCallableResolverFactory;
 use Componenta\Http\Middleware\Factory\MiddlewareFactoryFactory;
-use Componenta\Http\Middleware\Factory\MiddlewareGroupResolverFactory;
+use Componenta\Http\Middleware\Factory\ServiceResolverFactory;
 use Componenta\Http\Middleware\Resolver\CallableResolver;
-use Componenta\Http\Middleware\Resolver\ClassNameResolver;
-use Componenta\Http\Middleware\Resolver\LegacyCallableResolver;
-use Componenta\Http\Middleware\Resolver\MiddlewareGroupResolver;
 use Componenta\Http\Middleware\Resolver\MiddlewareResolverInterface;
+use Componenta\Http\Middleware\Resolver\ServiceResolver;
 
-class ConfigProvider extends \Componenta\Config\ConfigProvider
+final class ConfigProvider extends \Componenta\Config\ConfigProvider
 {
-    protected function getProviders(): array
+    /** @return array<class-string, class-string> */
+    protected function getInvokables(): array
     {
-        return [new PipelineConfigProvider];
+        return [PipelineFactoryInterface::class => PipelineFactory::class];
     }
 
+    /** @return array<class-string, class-string> */
     protected function getFactories(): array
     {
         return [
             MiddlewareFactory::class => MiddlewareFactoryFactory::class,
             MiddlewareResolverInterface::class => CompositeResolverFactory::class,
-            MiddlewareGroupResolver::class => MiddlewareGroupResolverFactory::class,
-            ClassNameResolver::class => ClassNameResolverFactory::class,
+            ServiceResolver::class => ServiceResolverFactory::class,
             CallableResolver::class => CallableResolverFactory::class,
-            LegacyCallableResolver::class => LegacyCallableResolverFactory::class,
         ];
     }
 }

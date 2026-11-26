@@ -4,16 +4,15 @@
     "type": "library",
     "license": "MIT",
     "require": {
-        "php": "^8.4",
+        "php": "^8.5.13",
         "componenta/arrayable": "^1.0",
-        "componenta/di": "^5.0 || ^6.0",
-        "componenta/http-responder": "^1.0.3",
-        "componenta/pipeline": "^1.0",
-        "componenta/reflection": "^2.0.1 || ^3.0",
+        "componenta/config": "^4.0",
+        "componenta/di": "^6.0",
+        "componenta/pipeline": "^1.1",
         "psr/container": "^2.0",
+        "psr/http-factory": "^1.0",
         "psr/http-message": "^2.0",
-        "psr/http-server-middleware": "^1.0",
-        "componenta/config": "^3.0 || ^4.0"
+        "psr/http-server-middleware": "^1.0"
     },
     "autoload": {
         "psr-4": {
@@ -33,18 +32,35 @@
             ]
         },
         "branch-alias": {
-            "dev-main": "2.1.x-dev",
-            "dev-fix/callback-dependency-baseline-2026-11-26": "2.1.x-dev"
+            "dev-main": "3.0.x-dev",
+            "dev-refactor/middleware-factory-audit": "3.0.x-dev"
         }
     },
     "require-dev": {
-        "phpunit/phpunit": "^12.0",
-        "nyholm/psr7": "^1.8"
+        "nyholm/psr7": "^1.8",
+        "pestphp/pest": "^4.0",
+        "phpbench/phpbench": "^1.7",
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^12.0"
     },
     "scripts": {
-        "test": "@php vendor/bin/phpunit tests"
+        "test": "@php vendor/bin/pest",
+        "phpstan": "@php vendor/bin/phpstan analyse src --level=max --no-progress",
+        "benchmark": "@php vendor/bin/phpbench run --report=aggregate",
+        "check": [
+            "@test",
+            "@phpstan"
+        ]
     },
     "config": {
-        "sort-packages": true
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "sort-packages": true,
+        "audit": {
+            "ignore-abandoned": {
+                "doctrine/annotations": "Transitive PHPBench development dependency; benchmarks use PHP attributes. Security advisories remain enforced."
+            }
+        }
     }
 }

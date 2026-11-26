@@ -4,37 +4,46 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Middleware\Resolver;
 
+use Closure;
 use Componenta\DI\CallableExecutorInterface;
 use Componenta\Http\Middleware\Adapter\CallableAdapter;
 use Componenta\Http\Middleware\Exception\MiddlewareResolutionException;
-use Componenta\Http\Responder;
+use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Server\MiddlewareInterface;
+use Throwable;
 
-/**
- * Resolver for callable middleware with dependency injection.
- *
- * Resolves any value that can be converted to a PHP callable
- * and wraps it in a standard {@see CallableAdapter} with DI support.
- */
+/** Adapts callable definitions with DI-aware invocation. */
 final readonly class CallableResolver implements MiddlewareResolverInterface
 {
+    /** @param (Closure(mixed): ResponseInterface)|null $normalizer */
     public function __construct(
         private CallableExecutorInterface $executor,
-        private ?Responder $responder = null,
+        private ?Closure $normalizer = null,
     ) {}
 
     public function resolve(mixed $middleware): ?MiddlewareInterface
     {
-        try {
-            $callable = $this->executor->resolve($middleware);
-        } catch (\Throwable $e) {
-            throw MiddlewareResolutionException::fromPrevious($middleware, $e);
+        if (!is_string($middleware) && !is_array($middleware) && !is_callable($middleware)) {
+            return null;
         }
-
-        if (!$callable) {
+        if (is_array($middleware)
+            && (array_keys($middleware) !== [0, 1]
+                || !(is_string($middleware[0]) || is_object($middleware[0]))
+                || !is_string($middleware[1]))
+        ) {
             return null;
         }
 
-        return new CallableAdapter($callable, $this->executor, $this->responder);
+        try {
+            return $this->adapt($this->executor->resolve($middleware));
+        } catch (Throwable $e) {
+            throw MiddlewareResolutionException::fromPrevious($middleware, $e);
+        }
+    }
+
+    /** Adapts an already resolved callable without another service lookup. */
+    public function adapt(callable $callable): MiddlewareInterface
+    {
+        return CallableAdapter::fromCallable($callable, $this->executor, $this->normalizer);
     }
 }

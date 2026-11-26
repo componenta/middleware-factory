@@ -4,68 +4,119 @@ declare(strict_types=1);
 
 namespace Componenta\Http\Middleware;
 
-use Psr\Http\Server\MiddlewareInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use Componenta\Http\Middleware\Adapter\RequestHandlerAdapter;
-use Componenta\Http\Middleware\Resolver\MiddlewareResolverInterface;
 use Componenta\Http\Middleware\Exception\MiddlewareResolutionException;
 use Componenta\Http\Middleware\Exception\MiddlewareResolutionExceptionInterface;
+use Componenta\Http\Middleware\Resolver\CallableResolver;
+use Componenta\Http\Middleware\Resolver\MiddlewareResolverInterface;
+use Componenta\Http\Middleware\Resolver\ServiceResolver;
+use Psr\Http\Server\MiddlewareInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+use Throwable;
 
 /**
- * Factory for creating PSR-15 middleware instances from various definitions.
- *
- * This factory delegates middleware resolution to a resolver and handles
- * built-in PSR-15 types (MiddlewareInterface, RequestHandlerInterface).
+ * Resolves definitions into PSR-15 middleware. All recursion state belongs to
+ * the current resolution, never to the factory or its shared resolvers.
  */
 final readonly class MiddlewareFactory
 {
-    /**
-     * Creates a new middleware factory.
-     *
-     * @param MiddlewareResolverInterface $resolver Middleware resolver
-     */
     public function __construct(
-        private MiddlewareResolverInterface $resolver
-    ) {
-        // Inject factory into aware resolvers
-        if ($resolver instanceof MiddlewareFactoryAwareInterface) {
-            $resolver->setMiddlewareFactory($this);
-        }
+        private MiddlewareResolverInterface $resolver,
+        private ?ServiceResolver $services = null,
+        private ?CallableResolver $callables = null,
+        private PipelineFactoryInterface $pipelines = new PipelineFactory(),
+    ) {}
+
+    /** @throws MiddlewareResolutionExceptionInterface */
+    public function createMiddleware(mixed $middleware): MiddlewareInterface
+    {
+        return $this->resolve($middleware, [], []);
     }
 
     /**
-     * Resolves a middleware definition to a valid PSR-15 MiddlewareInterface instance.
-     *
-     * @param mixed $middleware The middleware definition to resolve
-     * @return MiddlewareInterface A valid PSR-15 middleware instance
-     * @throws MiddlewareResolutionExceptionInterface If resolution fails
+     * @param array<string, true> $activeServices
+     * @param array<int, true> $activeGroups
      */
-    public function createMiddleware(mixed $middleware): MiddlewareInterface
+    private function resolve(mixed $definition, array $activeServices, array $activeGroups): MiddlewareInterface
     {
-        // Try resolver
         try {
-            $resolved = $this->resolver->resolve($middleware);
+            if ($definition instanceof MiddlewareInterface) {
+                return $definition;
+            }
 
+            if ($definition instanceof RequestHandlerInterface) {
+                return new RequestHandlerAdapter($definition);
+            }
+
+            if ($definition instanceof MiddlewareGroup) {
+                $id = spl_object_id($definition);
+                if (isset($activeGroups[$id])) {
+                    throw new MiddlewareResolutionException($definition, 'Cyclic middleware group.');
+                }
+                $activeGroups[$id] = true;
+
+                $resolved = [];
+                foreach ($definition as $index => $member) {
+                    try {
+                        $resolved[] = $this->resolve($member, $activeServices, $activeGroups);
+                    } catch (MiddlewareResolutionExceptionInterface $e) {
+                        throw new MiddlewareResolutionException(
+                            $definition,
+                            sprintf('Failed to resolve middleware at index %d in group.', $index),
+                            $e,
+                        );
+                    }
+                }
+
+                return $this->pipelines->createMiddlewarePipeline($resolved);
+            }
+
+            $resolved = $this->resolver->resolve($definition);
             if ($resolved !== null) {
                 return $resolved;
             }
-        } catch (\Throwable $e) {
-            if (!$e instanceof MiddlewareResolutionExceptionInterface) {
-                throw MiddlewareResolutionException::fromPrevious($middleware, $e);
+
+            if (is_string($definition) && $this->services !== null) {
+                $key = 'service:' . $definition;
+                if (isset($activeServices[$key])) {
+                    throw new MiddlewareResolutionException($definition, 'Cyclic middleware service definition.');
+                }
+                $activeServices[$key] = true;
+
+                $resolved = $this->services->resolve(
+                    $definition,
+                    function (mixed $entry) use ($activeServices, $activeGroups): MiddlewareInterface {
+                        if ($entry instanceof MiddlewareInterface
+                            || $entry instanceof RequestHandlerInterface
+                            || $entry instanceof MiddlewareGroup
+                        ) {
+                            return $this->resolve($entry, $activeServices, $activeGroups);
+                        }
+                        if ($this->callables !== null && is_callable($entry)) {
+                            return $this->callables->adapt($entry);
+                        }
+
+                        throw new MiddlewareResolutionException(
+                            $entry,
+                            'Middleware service must return middleware, a request handler, a group, or a callable.',
+                        );
+                    },
+                );
+                if ($resolved !== null) {
+                    return $resolved;
+                }
             }
+
+            $resolved = $this->callables?->resolve($definition);
+            if ($resolved !== null) {
+                return $resolved;
+            }
+
+            throw new MiddlewareResolutionException($definition);
+        } catch (MiddlewareResolutionExceptionInterface $e) {
             throw $e;
+        } catch (Throwable $e) {
+            throw MiddlewareResolutionException::fromPrevious($definition, $e);
         }
-
-        // Handle built-in PSR-15 types
-        if ($middleware instanceof MiddlewareInterface) {
-            return $middleware;
-        }
-
-        if ($middleware instanceof RequestHandlerInterface) {
-            return new RequestHandlerAdapter($middleware);
-        }
-
-        // Resolution failed
-        throw new MiddlewareResolutionException($middleware);
     }
 }

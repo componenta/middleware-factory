@@ -1,129 +1,80 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Componenta\Http\Middleware;
 
+use ArrayIterator;
 use Componenta\Arrayable\Arrayable;
+use Countable;
+use InvalidArgumentException;
+use IteratorAggregate;
 
 /**
- * Container for middleware definitions that can be converted to Pipeline.
+ * Non-empty, immutable ordered collection of middleware definitions.
+ * Definition objects are shared; collection operations never mutate the list.
  *
- * A group must contain at least one middleware definition and cannot be empty.
+ * @implements IteratorAggregate<int, mixed>
  */
-final class MiddlewareGroup implements \Countable, \IteratorAggregate, Arrayable
+final readonly class MiddlewareGroup implements Countable, IteratorAggregate, Arrayable
 {
-    /**
-     * Array of middleware definitions.
-     */
-    private(set) array $middlewares = [];
+    /** @var non-empty-list<mixed> */
+    private array $middlewares;
 
-    /**
-     * Creates a new middleware group from definitions.
-     *
-     * @param mixed $middleware First middleware definition (required)
-     * @param mixed ...$other Additional middleware definitions
-     */
-    public function __construct(
-        mixed $middleware,
-        mixed ...$other
-    ) {
-        $this->middlewares = [$middleware, ...$other];
+    public function __construct(mixed $middleware, mixed ...$other)
+    {
+        $items = [$middleware];
+        foreach ($other as $definition) {
+            $items[] = $definition;
+        }
+        $this->middlewares = $items;
     }
 
-    /**
-     * Returns a new instance with the added middleware definition.
-     *
-     * @param mixed $middleware Middleware definition to add
-     * @param bool $prepend Whether to add at the beginning of the group
-     * @return self New instance with the added middleware
-     */
     public function with(mixed $middleware, bool $prepend = false): self
     {
-        $middlewares = $this->middlewares;
-
-        if ($prepend) {
-            array_unshift($middlewares, $middleware);
-        } else {
-            $middlewares[] = $middleware;
-        }
-
-        return self::fromArray($middlewares);
+        return self::fromArray($prepend
+            ? [$middleware, ...$this->middlewares]
+            : [...$this->middlewares, $middleware]);
     }
 
-    /**
-     * Returns a new instance with the added middleware definitions.
-     *
-     * @param iterable $middlewares Set of middleware definitions (must not be empty)
-     * @param bool $prepend Whether to add at the beginning of the group
-     * @return self New instance with the added middlewares
-     * @throws \InvalidArgumentException If no middleware definitions provided
-     */
+    /** @param iterable<mixed> $middlewares */
     public function withMany(iterable $middlewares, bool $prepend = false): self
     {
-        $middlewareArray = [];
+        $items = [];
         foreach ($middlewares as $middleware) {
-            $middlewareArray[] = $middleware;
+            $items[] = $middleware;
+        }
+        if ($items === []) {
+            throw new InvalidArgumentException('Cannot add an empty middleware collection.');
         }
 
-        if (empty($middlewareArray)) {
-            throw new \InvalidArgumentException(
-                'Cannot add empty middleware collection. At least one middleware definition is required.'
-            );
-        }
-
-        $result = $this->middlewares;
-
-        if ($prepend) {
-            foreach (array_reverse($middlewareArray) as $middleware) {
-                array_unshift($result, $middleware);
-            }
-        } else {
-            foreach ($middlewareArray as $middleware) {
-                $result[] = $middleware;
-            }
-        }
-
-        return self::fromArray($result);
+        return self::fromArray($prepend
+            ? [...$items, ...$this->middlewares]
+            : [...$this->middlewares, ...$items]);
     }
 
-    /**
-     * Returns the number of middleware in the group.
-     *
-     * @return int Number of middleware definitions (always >= 1)
-     */
     public function count(): int
     {
         return count($this->middlewares);
     }
 
-    /**
-     * Returns an iterator for traversing middleware definitions.
-     *
-     * @return \ArrayIterator Iterator for middleware definitions
-     */
-    public function getIterator(): \ArrayIterator
+    /** @return ArrayIterator<int, mixed> */
+    public function getIterator(): ArrayIterator
     {
-        return new \ArrayIterator($this->middlewares);
+        return new ArrayIterator($this->middlewares);
     }
 
-    /**
-     * Creates a middleware group from an array of middleware definitions.
-     *
-     * @param array $middlewares Array of middleware definitions (must not be empty)
-     * @return self New middleware group instance
-     * @throws \InvalidArgumentException If array is empty
-     */
+    /** @param array<array-key, mixed> $middlewares */
     public static function fromArray(array $middlewares): self
     {
-        if (empty($middlewares)) {
-            throw new \InvalidArgumentException(
-                'MiddlewareGroup cannot be empty. At least one middleware definition is required.'
-            );
+        if ($middlewares === []) {
+            throw new InvalidArgumentException('MiddlewareGroup cannot be empty.');
         }
 
-        $first = array_shift($middlewares);
-        return new self($first, ...$middlewares);
+        return new self(...array_values($middlewares));
     }
 
+    /** @return non-empty-list<mixed> */
     public function toArray(): array
     {
         return $this->middlewares;
