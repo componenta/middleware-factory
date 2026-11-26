@@ -1,86 +1,104 @@
 # Componenta Middleware Factory
 
-Supports Componenta Config 3 or 4, DI 5 or 6, and Reflection 2 or 3. DI 6 requires PHP 8.5.13 or newer.
-
-PSR-15 middleware resolver and group factory.
-
-Use this package when routes, modules, or config files need to describe middleware as class names, service ids, callables, existing middleware instances, or named groups, while the runtime always receives concrete `MiddlewareInterface` instances.
+Resolves trusted middleware definitions into PSR-15 middleware. The factory is independent of HTTP response serialization; execution of middleware chains belongs to [Componenta Pipeline](https://github.com/componenta/pipeline).
 
 ## Installation
 
-```bash
-composer require componenta/middleware-factory
+```sh
+composer require componenta/middleware-factory:^3.0
 ```
 
-The package declares `Componenta\Http\Middleware\ConfigProvider` in `extra.componenta.config-providers`.
-When `componenta/composer-plugin` is installed, the provider is added to the generated provider list automatically.
 
-## Requirements
+Requires PHP 8.5.13+, Config 4, DI 6 and Pipeline 1.1. The package registers its configuration provider through `extra.componenta.config-providers`. Applications without the Componenta Composer plugin can compose `ComponentaHttpMiddlewareConfigProvider` explicitly.
 
-- PHP 8.4+
-- PSR-11 container
-- PSR-15 HTTP server middleware
-
-## Related Packages
-
-| Package | Why it matters here |
-|---|---|
-| `componenta/router` | Stores route middleware as strings, classes, or groups and passes them to this factory. |
-| `componenta/pipeline` | Executes created middleware as a PSR-15 chain. |
-| `componenta/di` | Resolves middleware by service id or class name. |
-| `componenta/http-*-middleware` | Provides concrete HTTP middleware packages that this factory can resolve through attributes and aliases. |
-
-## Middleware Definitions
-
-`MiddlewareFactory` resolves a definition into PSR-15 middleware:
+## Definitions
 
 ```php
-use Componenta\Http\Middleware\MiddlewareFactory;
+use Componenta\DI\Attribute\CurrentRequest;
+use Componenta\Http\Middleware\MiddlewareGroup;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
 
-$middleware = $factory->create(AuthMiddleware::class);
-$middleware = $factory->create($callable);
-$middleware = $factory->create('web');
+$auth = $factory->createMiddleware(AuthMiddleware::class);
+$service = $factory->createMiddleware('middleware.auth');
+
+$callback = static function (
+    #[CurrentRequest] ServerRequestInterface $request,
+    RequestHandlerInterface $next,
+): ResponseInterface {
+    return $next->handle($request)->withHeader('X-Processed', 'yes');
+};
+
+$group = new MiddlewareGroup($auth, $callback);
+$middleware = $factory->createMiddleware($group);
+$response = $middleware->process($request, $terminal);
 ```
 
-Supported definitions:
 
-- existing `MiddlewareInterface` instances
-- PSR-11 service ids or class names
-- callables adapted to middleware
-- legacy request handler callables
-- configured middleware group names
+Resolution order:
 
-If no resolver can handle a definition, `MiddlewareResolutionException` is thrown with the original definition type.
+1. Existing PSR-15 middleware is returned unchanged.
+2. Existing request handlers are adapted as middleware.
+3. Middleware groups are recursively resolved in order.
+4. Configured extension resolvers are tried in order. The first non-null result wins.
+5. String service identifiers are looked up in the PSR-11 container. A present service must provide middleware, a request handler, a group or a native callable. Errors do not fall through to another interpretation of the identifier.
+6. Remaining callable definitions are resolved through DI. Supported forms follow DI's callable resolution contract.
 
-## Resolver Chain
+A group is a non-empty ordered collection, not a name. Register a group under a service identifier to reference it by name. Groups accept arbitrary array or iterable keys, normalize to a list, and preserve value order. `with()` and `withMany()` return new groups; the original collection is unchanged.
 
-Resolution is delegated to `MiddlewareResolverInterface` implementations:
+## Callable middleware
 
-- `ClassNameResolver`
-- `CallableResolver`
-- `LegacyCallableResolver`
-- `MiddlewareGroupResolver`
-- `CompositeResolver`
+Callables are invoked by DI. The current HTTP request is supplied as request context; use `#[CurrentRequest]` to inject it, and the ordinary DI HTTP attributes to extract headers, query values or payload data. The next handler is supplied by `RequestHandlerInterface` type. A bare request type does not automatically select the current HTTP request in DI 6.
 
-`CompositeResolver` tries resolvers in order and returns the first successful result. This keeps custom resolution rules additive: register a resolver before or after the defaults depending on precedence.
+By default, a callable must return one of:
 
-## Groups
+- `ResponseInterface` (returned unchanged).
+- `MiddlewareInterface` (processed with the same request and continuation).
+- `RequestHandlerInterface` (handled directly with the same request).
 
-`MiddlewareGroup` is a named ordered collection:
+Other return values cause `UnexpectedValueException`. A normalization closure may be explicitly configured on `CallableResolver` or passed to `CallableAdapter::fromCallable()`. Its result must be a PSR-7 response; failures propagate unchanged. There is no implicit responder service lookup.
+
+Legacy single-pass and double-pass functions require an explicit adapter:
 
 ```php
-$group = new MiddlewareGroup('web', [
-    SessionMiddleware::class,
-    CsrfMiddleware::class,
-]);
+use Componenta\Http\Middleware\Adapter\CallableAdapter;
 
-$pipeline = $factory->createGroup($group);
+$single = CallableAdapter::singlePassMiddleware($callback, $invoker);
+$double = CallableAdapter::doublePassMiddleware($callback, $invoker, $responseFactory);
 ```
 
-Groups are useful when route config should refer to a stable name like `web`, `api`, or `admin` without duplicating the middleware list.
 
-## Config
+Single-pass functions receive the request and a continuation callable. Double-pass functions receive the request, a fresh response and a continuation callable accepting the request. Both use positional arguments.
 
-`ConfigProvider` registers the factory and default resolvers. `ConfigKey` contains keys for middleware groups and resolver definitions.
+Request handlers are terminal by default, but an adapted request handler may explicitly delegate using the request attribute `RequestHandlerAdapter::FALLBACK_HANDLER_ATTRIBUTES_KEY`. The original request is not modified. Do not retain the request or its continuation beyond processing. Direct calls to an adapter's `handle()` do not add this attribute.
 
-Applications can replace or extend the resolver chain by changing DI config rather than changing route definitions.
+## Extension resolvers
+
+Implement `ResolverMiddlewareResolverInterface`. Return `null` only for an unhandled definition; throw on an attempted resolution failure. Register the resolver as a container service and list its identifier in application configuration:
+
+```php
+use Componenta\Http\Middleware\ConfigKey;
+
+return [
+    ConfigKey::RESOLVERS => [CustomMiddlewareResolver::class],
+];
+```
+
+
+The extension chain is immutable. `CompositeResolver::with()` creates a new chain; a previously constructed factory is not modified. Extension resolvers are not invoked for existing PSR-15 objects or groups.
+
+Resolution failures implement `ExceptionMiddlewareResolutionExceptionInterface`. Its diagnostic `definitionType` describes the input type without retaining raw definitions. The original cause is available through `getPrevious()`. Do not expose exception chains to HTTP clients.
+
+Only trusted application configuration and code should supply middleware definitions. Do not use untrusted HTTP request data as a service identifier or callable.
+
+## Development
+
+```sh
+composer test
+composer phpstan
+composer benchmark
+```
+
+
+See [migration instructions](MIGRATION.md) for upgrading from 2.x.

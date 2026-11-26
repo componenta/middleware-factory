@@ -1,86 +1,104 @@
 # Componenta Middleware Factory
 
-Поддерживает Componenta Config 3 и 4, DI 5 и 6, Reflection 2 и 3. Для DI 6 требуется PHP 8.5.13 или новее.
-
-Фабрика PSR-15 промежуточных обработчиков. Пакет превращает строки, имена классов, группы, callable-обработчики и готовые объекты в конкретные экземпляры `MiddlewareInterface`.
-
-Используйте пакет, когда маршруты или конфигурация описывают промежуточные обработчики декларативно, а во время выполнения нужен готовый PSR-15 объект.
+Преобразует доверенные определения промежуточных обработчиков в объекты PSR-15. Выполнение цепочек относится к ответственности [Componenta Pipeline](https://github.com/componenta/pipeline), а формирование и сериализация HTTP-ответов не входят в ответственность фабрики.
 
 ## Установка
 
-```bash
-composer require componenta/middleware-factory
+```sh
+composer require componenta/middleware-factory:^3.0
 ```
 
-Пакет объявляет `Componenta\Http\Middleware\ConfigProvider` в `extra.componenta.config-providers`.
-Если установлен `componenta/composer-plugin`, провайдер автоматически добавляется в сгенерированный список провайдеров.
 
-## Требования
+Требуются PHP 8.5.13+, Config 4, DI 6 и Pipeline 1.1. Провайдер конфигурации регистрируется через `extra.componenta.config-providers`. Без плагина Composer его можно явно передать фабрике конфигурации: `ComponentaHttpMiddlewareConfigProvider`.
 
-- PHP 8.4+
-- PSR-11 контейнер
-- PSR-15 HTTP промежуточные обработчики
-
-## Связанные пакеты
-
-| Пакет | Зачем нужен здесь |
-|---|---|
-| `componenta/router` | Хранит промежуточные обработчики маршрута как строки, имена классов или группы, а затем передает их фабрике. |
-| `componenta/pipeline` | Выполняет созданные промежуточные обработчики в PSR-15 цепочке. |
-| `componenta/di` | Достает промежуточные обработчики из контейнера по service id или имени класса. |
-| `componenta/http-*-middleware` | Содержит конкретные пакеты HTTP-промежуточных обработчиков, которые эта фабрика может находить через атрибуты и псевдонимы. |
-
-## Определения промежуточных обработчиков
-
-`MiddlewareFactory` разрешает определение в PSR-15 промежуточный обработчик:
+## Определения
 
 ```php
-use Componenta\Http\Middleware\MiddlewareFactory;
+use Componenta\DI\Attribute\CurrentRequest;
+use Componenta\Http\Middleware\MiddlewareGroup;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
 
-$middleware = $factory->create(AuthMiddleware::class);
-$middleware = $factory->create($callable);
-$middleware = $factory->create('web');
+$auth = $factory->createMiddleware(AuthMiddleware::class);
+$service = $factory->createMiddleware('middleware.auth');
+
+$callback = static function (
+    #[CurrentRequest] ServerRequestInterface $request,
+    RequestHandlerInterface $next,
+): ResponseInterface {
+    return $next->handle($request)->withHeader('X-Processed', 'yes');
+};
+
+$group = new MiddlewareGroup($auth, $callback);
+$middleware = $factory->createMiddleware($group);
+$response = $middleware->process($request, $terminal);
 ```
 
-Поддерживаются:
 
-- готовые экземпляры `MiddlewareInterface`;
-- service id PSR-11 контейнера или имена классов;
-- callable-обработчики, адаптируемые в промежуточный обработчик;
-- устаревшие callable-обработчики запросов;
-- имена настроенных групп промежуточных обработчиков.
+Порядок разрешения:
 
-Если ни один резолвер не может обработать определение, выбрасывается `MiddlewareResolutionException` с исходным типом определения.
+1. Готовый промежуточный обработчик возвращается без изменений.
+2. Обработчик запроса адаптируется к промежуточному обработчику.
+3. Элементы группы рекурсивно разрешаются в порядке регистрации.
+4. Пользовательские резолверы вызываются в порядке конфигурации. Используется первый результат, отличный от `null`.
+5. Строковый идентификатор проверяется в контейнере PSR-11. Зарегистрированный сервис должен предоставить промежуточный обработчик, обработчик запроса, группу или вызываемый объект PHP. Ошибка существующего сервиса не допускает перехода к другой интерпретации идентификатора.
+6. Оставшиеся определения вызываемых объектов разрешаются средствами DI согласно его публичному контракту.
 
-## Цепочка резолверов
+Группа является непустой упорядоченной коллекцией, а не именованным объектом. Для ссылки по имени зарегистрируйте группу как сервис. Ключи входного массива или итерируемой коллекции игнорируются; значения сохраняют порядок. Методы `with()` и `withMany()` создают новые группы, не изменяя исходную.
 
-Разрешение делегируется реализациям `MiddlewareResolverInterface`:
+## Вызываемые обработчики
 
-- `ClassNameResolver`
-- `CallableResolver`
-- `LegacyCallableResolver`
-- `MiddlewareGroupResolver`
-- `CompositeResolver`
+Вызов выполняется через DI. Текущий HTTP-запрос передаётся как контекст: используйте атрибут `#[CurrentRequest]` для его получения, другие атрибуты DI — для извлечения заголовков, параметров и тела запроса. Продолжение передаётся по типу `RequestHandlerInterface`. Сам по себе тип запроса не означает текущий HTTP-запрос в DI 6.
 
-`CompositeResolver` пробует резолверы по порядку и возвращает первый успешный результат. Пользовательские правила разрешения добавляются без изменения потребителей: зарегистрируйте резолвер до или после стандартных в зависимости от нужного приоритета.
+Допустимые результаты:
 
-## Группы
+- `ResponseInterface` — ответ возвращается без изменений;
+- `MiddlewareInterface` — выполняется с текущим запросом и продолжением;
+- `RequestHandlerInterface` — получает текущий запрос напрямую.
 
-`MiddlewareGroup` — именованная упорядоченная коллекция:
+Другие результаты вызывают `UnexpectedValueException`. Если необходимо преобразование произвольных значений, явно передайте замыкание в `CallableResolver` или `CallableAdapter::fromCallable()`. Оно должно вернуть ответ PSR-7; его исключения распространяются без изменений. Неявного поиска сервиса формирования ответов нет.
+
+Устаревшие соглашения вызова поддерживаются через явные адаптеры:
 
 ```php
-$group = new MiddlewareGroup('web', [
-    SessionMiddleware::class,
-    CsrfMiddleware::class,
-]);
+use Componenta\Http\Middleware\Adapter\CallableAdapter;
 
-$pipeline = $factory->createGroup($group);
+$single = CallableAdapter::singlePassMiddleware($callback, $invoker);
+$double = CallableAdapter::doublePassMiddleware($callback, $invoker, $responseFactory);
 ```
 
-Группы полезны, когда маршрут должен ссылаться на стабильное имя `web`, `api` или `admin` без дублирования списка промежуточных обработчиков.
 
-## Конфигурация
+Первый вариант получает запрос и вызываемое продолжение, второй — запрос, новый ответ и продолжение, принимающее запрос. Аргументы передаются по позиции.
 
-`ConfigProvider` регистрирует фабрику и стандартные резолверы. `ConfigKey` содержит ключи для групп промежуточных обработчиков и определений резолверов.
+Адаптированный обработчик запроса обычно является финальным, но может явно передать управление дальше через атрибут запроса `RequestHandlerAdapter::FALLBACK_HANDLER_ATTRIBUTES_KEY`. Исходный запрос не изменяется. Не сохраняйте запрос и продолжение после обработки. При прямом вызове `handle()` атрибут не добавляется.
 
-Приложение может заменить или расширить цепочку резолверов через DI-конфигурацию без изменения определений маршрутов.
+## Расширение разрешения
+
+Реализуйте `ResolverMiddlewareResolverInterface`. Возвращайте `null` только для неподдерживаемых определений. При ошибке начатого разрешения выбрасывайте исключение. Зарегистрируйте резолвер в контейнере и укажите его идентификатор в конфигурации приложения:
+
+```php
+use Componenta\Http\Middleware\ConfigKey;
+
+return [
+    ConfigKey::RESOLVERS => [CustomMiddlewareResolver::class],
+];
+```
+
+
+Цепочка расширений неизменяема. `CompositeResolver::with()` создаёт новую цепочку и не меняет ранее созданные фабрики. Пользовательские резолверы не вызываются для готовых PSR-15 объектов и групп.
+
+Ошибки разрешения реализуют `ExceptionMiddlewareResolutionExceptionInterface`. Свойство `definitionType` содержит тип определения, но не само определение. Исходная причина доступна через `getPrevious()`. Не раскрывайте цепочку исключений клиенту HTTP.
+
+Используйте только доверенные определения из кода или конфигурации приложения. Не передавайте данные HTTP-запросов в качестве идентификаторов сервисов или вызываемых объектов.
+
+## Разработка
+
+```sh
+composer test
+composer phpstan
+composer benchmark
+```
+
+
+Порядок перехода с версии 2.x описан в [руководстве по миграции](MIGRATION.ru.md).

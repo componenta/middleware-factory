@@ -1,0 +1,27 @@
+name: Check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+          tools: composer:v2
+      - run: composer validate --strict
+      - name: Install integration dependencies
+        run: |
+          composer config repositories.componenta-di vcs https://github.com/componenta/di
+          composer config repositories.componenta-pipeline vcs https://github.com/componenta/pipeline
+          composer require --no-update 'componenta/di:dev-main as 6.0.x-dev' 'componenta/pipeline:dev-fix/pipeline-audit as 1.1.x-dev'
+          composer update --no-interaction --prefer-dist
+      - run: composer check
