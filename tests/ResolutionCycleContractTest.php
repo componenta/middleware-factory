@@ -261,3 +261,42 @@ it('releases a discarded suspended resolution context', function (): void {
     $extension->suspend = false;
     expect($factory->createMiddleware('shared')->process(new ServerRequest('GET', '/'), terminal())->getStatusCode())->toBe(201);
 });
+
+
+it('allows distinct callable definitions with the same receiver and opaque identifiers containing delimiters', function (string $form): void {
+    $target = new CallbackTarget();
+    [$first, $second] = match ($form) {
+        'different methods' => [[$target, 'instance'], [$target, 'run']],
+        'object and pair' => [$target, [$target, 'instance']],
+        'opaque pairs' => [['service:a', 'b'], ['service', 'a:b']],
+        'identifier and pair' => ['Componenta\\Http\\Middleware\\Tests\\Cycles\\CallbackTarget::run', [CallbackTarget::class, 'run']],
+    };
+    $extension = new class($first, $second) implements MiddlewareResolverInterface {
+        public MiddlewareFactory $factory;
+        public int $calls = 0;
+
+        public function __construct(private mixed $first, private mixed $second) {}
+
+        public function resolve(mixed $middleware): ?MiddlewareInterface
+        {
+            ++$this->calls;
+            if ($middleware === $this->first) {
+                return $this->factory->createMiddleware($this->second);
+            }
+            if ($middleware !== $this->second) {
+                throw new LogicException('Unexpected definition.');
+            }
+            return new class implements MiddlewareInterface {
+                public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+                {
+                    return new Response(201);
+                }
+            };
+        }
+    };
+    $factory = new MiddlewareFactory(new CompositeResolver($extension));
+    $extension->factory = $factory;
+
+    expect($factory->createMiddleware($first)->process(new ServerRequest('GET', '/'), terminal())->getStatusCode())->toBe(201)
+        ->and($extension->calls)->toBe(2);
+})->with(['different methods', 'object and pair', 'opaque pairs', 'identifier and pair']);

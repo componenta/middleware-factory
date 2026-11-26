@@ -64,11 +64,7 @@ final readonly class MiddlewareFactory
             return new RequestHandlerAdapter($definition);
         }
 
-        $key = match (true) {
-            is_string($definition) => 'identifier:' . $definition,
-            $definition instanceof MiddlewareGroup => 'group:' . spl_object_id($definition),
-            default => null,
-        };
+        $key = ResolutionGuard::keyFor($definition);
         $context = $key === null ? null : $this->guard->enter($key, $definition);
 
         try {

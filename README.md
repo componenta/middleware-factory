@@ -75,7 +75,7 @@ return [
 
 Array definition slots are captured before resolution, including before extension resolvers execute. Definition objects retain their identity; nested custom payloads are not deep-frozen.
 
-Cyclic group and identifier resolution is rejected, including reentry through an extension or service provider in the same execution context. Independent Fibers and different definitions may resolve concurrently. Custom resolvers are responsible for avoiding cycles in other arbitrary definition types.
+Cyclic resolution of groups, string identifiers, callable pairs and invokable objects (including closures) is rejected, including reentry through an extension or service provider in the same execution context. Independent Fibers and different definitions may resolve concurrently. Custom resolvers are responsible for avoiding cycles in other arbitrary definition types.
 
 The extension chain is immutable. `CompositeResolver::with()` creates a new chain; a previously constructed factory is not modified. Extension resolvers are not invoked for existing PSR-15 objects or groups.
 
