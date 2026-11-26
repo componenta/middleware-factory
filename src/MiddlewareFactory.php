@@ -30,6 +30,16 @@ final readonly class MiddlewareFactory
     /** @throws MiddlewareResolutionExceptionInterface */
     public function createMiddleware(mixed $middleware): MiddlewareInterface
     {
+        // Extension resolvers may run user code or suspend. Capture array
+        // slots before handing the definition to the first resolver.
+        if (is_array($middleware)) {
+            $snapshot = [];
+            foreach ($middleware as $key => $value) {
+                $snapshot[$key] = $value;
+            }
+            $middleware = $snapshot;
+        }
+
         return $this->resolve($middleware, [], []);
     }
 

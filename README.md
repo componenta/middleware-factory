@@ -73,6 +73,8 @@ return [
 ];
 ```
 
+Array definition slots are captured before resolution, including before extension resolvers execute. Definition objects retain their identity; nested custom payloads are not deep-frozen.
+
 The extension chain is immutable. `CompositeResolver::with()` creates a new chain; a previously constructed factory is not modified. Extension resolvers are not invoked for existing PSR-15 objects or groups.
 
 Resolution failures implement `Componenta\Http\Middleware\Exception\MiddlewareResolutionExceptionInterface`. Its diagnostic `definitionType` describes the input type without retaining raw definitions. The original cause is available through `getPrevious()`. Do not expose exception chains to HTTP clients.
