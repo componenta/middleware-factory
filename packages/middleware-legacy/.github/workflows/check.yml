@@ -25,3 +25,23 @@ jobs:
       - run: composer update --no-interaction --prefer-dist
       - run: composer audit --locked --no-dev
       - run: composer check
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+          tools: composer:v2
+      # The upcoming factory and DI releases are tested from their current
+      # development branches until the stable versions are available.
+      - run: |
+          composer config repositories.componenta-factory vcs https://github.com/componenta/middleware-factory
+          composer config repositories.componenta-di vcs https://github.com/componenta/di
+          composer require --dev --no-update 'componenta/middleware-factory:dev-refactor/middleware-factory-audit as 3.0.x-dev' 'componenta/di:dev-main as 6.0.x-dev'
+          composer update --no-interaction --prefer-dist
+      - run: composer audit --locked
+      - run: composer test:integration
+      - run: composer phpstan:integration

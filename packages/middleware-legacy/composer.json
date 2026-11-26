@@ -5,6 +5,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.4",
+        "psr/container": "^2.0",
         "psr/http-factory": "^1.0",
         "psr/http-message": "^2.0",
         "psr/http-server-handler": "^1.0",
@@ -23,11 +24,13 @@
     },
     "scripts": {
         "test": "@php vendor/bin/pest",
-        "phpstan": "@php vendor/bin/phpstan analyse src --level=max --no-progress",
+        "phpstan": "@php vendor/bin/phpstan analyse src/SinglePassAdapter.php src/DoublePassAdapter.php src/Internal --level=max --no-progress",
         "check": [
             "@test",
             "@phpstan"
-        ]
+        ],
+        "test:integration": "@php vendor/bin/pest integration-tests",
+        "phpstan:integration": "@php vendor/bin/phpstan analyse src --level=max --no-progress"
     },
     "config": {
         "allow-plugins": {
@@ -36,5 +39,8 @@
         "sort-packages": true
     },
     "minimum-stability": "stable",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "suggest": {
+        "componenta/middleware-factory": "Install version 3.x to use the optional legacy signature resolvers (PHP 8.5.13+)."
+    }
 }

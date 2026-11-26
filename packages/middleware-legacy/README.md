@@ -1,6 +1,6 @@
 # Componenta Middleware Legacy
 
-Explicit, optional adapters for the former Componenta single-pass and double-pass callable middleware conventions. Both adapters implement PSR-15 MiddlewareInterface and require only PSR packages at runtime. There is no automatic signature detection, container lookup, response normalization or dependency on Componenta DI, Pipeline or Middleware Factory.
+Explicit, optional adapters for the former Componenta single-pass and double-pass callable middleware conventions. Both adapters implement PSR-15 MiddlewareInterface and require only PSR packages at runtime. Explicit adapters do not perform signature detection, container lookup or response normalization. Optional signature resolvers integrate with Middleware Factory 3; adapters have no runtime dependency on Componenta packages.
 
 ## Installation
 
@@ -60,12 +60,44 @@ Pass native PHP callables: closures, public functions, public method pairs or in
 
 ## Integration
 
-The adapters can be passed directly to Pipeline::pipe() or MiddlewareFactory::createMiddleware(), just like any other MiddlewareInterface. Those packages do not depend on or detect this optional package.
+The adapters can be passed directly to Pipeline::pipe() or MiddlewareFactory::createMiddleware(), just like any other MiddlewareInterface. Those packages do not depend on this optional package.
 
 ```php
 $pipeline = $pipeline->pipe($middleware);
 $resolved = $factory->createMiddleware($middleware);
 ```
+
+## Optional signature resolvers
+
+When using Componenta Middleware Factory 3 (PHP 8.5.13+), explicitly register the resolvers as services and configure their order. The factory has no dependency on this package. Adapters remain usable without the factory.
+
+```php
+use Componenta\Config\ConfigKey as DIConfigKey;
+use Componenta\Http\Middleware\ConfigKey;
+use Componenta\Http\Middleware\Legacy\Resolver\SinglePassResolver;
+use Componenta\Http\Middleware\Legacy\Resolver\DoublePassResolver;
+use Psr\Container\ContainerInterface;
+use Psr\Http\Message\ResponseFactoryInterface;
+
+return [
+    ConfigKey::RESOLVERS => [
+        SinglePassResolver::class,
+        DoublePassResolver::class,
+    ],
+    DIConfigKey::DEPENDENCIES => [
+        DIConfigKey::FACTORIES => [
+            SinglePassResolver::class => static fn (ContainerInterface $c) =>
+                new SinglePassResolver($c),
+            DoublePassResolver::class => static fn (ContainerInterface $c) =>
+                new DoublePassResolver($c, $c->get(ResponseFactoryInterface::class)),
+        ],
+    ],
+];
+```
+
+The response factory must be registered by the application. The resolvers recognize exactly two or three non-variadic, by-value parameters: ServerRequestInterface, optionally ResponseInterface, and callable or Closure. Untyped, union, concrete PSR implementation and other ambiguous signatures are not inferred; wrap them explicitly if suitable. Existing PSR-15 objects take precedence. A present string service identifier is left to the factory; to use legacy middleware as a service, register the corresponding adapter as the service value instead of a raw legacy callable. No service is instantiated by the signature resolvers. Native callable bodies are never executed while detecting signatures.
+
+The optional resolvers require the factory's MiddlewareResolverInterface at runtime, but only if they are loaded. Composer suggests the integration dependency; standalone adapter users do not need it. Integration tests install the factory and DI development versions until their stable releases are available.
 
 ## Development
 
