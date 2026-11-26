@@ -146,3 +146,34 @@ it('clears an identifier guard after a failed resolution and permits subsequent 
         expect($factory->createMiddleware('retry')->process(new ServerRequest('GET', '/'), terminal())->getStatusCode())->toBe(202);
     }
 });
+
+
+it('does not copy an active resolution guard into a cloned factory', function (): void {
+    $extension = new class implements MiddlewareResolverInterface {
+        public MiddlewareFactory $factory;
+        private bool $nested = false;
+
+        public function resolve(mixed $middleware): ?MiddlewareInterface
+        {
+            if (!$this->nested) {
+                $this->nested = true;
+                try {
+                    return (clone $this->factory)->createMiddleware($middleware);
+                } finally {
+                    $this->nested = false;
+                }
+            }
+
+            return new class implements MiddlewareInterface {
+                public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+                {
+                    return new Response(201);
+                }
+            };
+        }
+    };
+    $factory = new MiddlewareFactory(new CompositeResolver($extension));
+    $extension->factory = $factory;
+
+    expect($factory->createMiddleware('shared')->process(new ServerRequest('GET', '/'), terminal())->getStatusCode())->toBe(201);
+});

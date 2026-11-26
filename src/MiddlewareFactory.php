@@ -7,6 +7,7 @@ namespace Componenta\Http\Middleware;
 use Componenta\Http\Middleware\Adapter\RequestHandlerAdapter;
 use Componenta\Http\Middleware\Exception\MiddlewareResolutionException;
 use Componenta\Http\Middleware\Exception\MiddlewareResolutionExceptionInterface;
+use Componenta\Http\Middleware\Internal\ResolutionGuard;
 use Componenta\Http\Middleware\Resolver\CallableResolver;
 use Componenta\Http\Middleware\Resolver\MiddlewareResolverInterface;
 use Componenta\Http\Middleware\Resolver\ServiceResolver;
@@ -15,17 +16,27 @@ use Psr\Http\Server\RequestHandlerInterface;
 use Throwable;
 
 /**
- * Resolves definitions into PSR-15 middleware. All recursion state belongs to
- * the current resolution, never to the factory or its shared resolvers.
+ * Resolves definitions into PSR-15 middleware.
+ * The transient resolution guard is isolated per execution context.
  */
 final readonly class MiddlewareFactory
 {
+    private ResolutionGuard $guard;
+
     public function __construct(
         private MiddlewareResolverInterface $resolver,
         private ?ServiceResolver $services = null,
         private ?CallableResolver $callables = null,
         private PipelineFactoryInterface $pipelines = new PipelineFactory(),
-    ) {}
+    ) {
+        $this->guard = new ResolutionGuard();
+    }
+
+    public function __clone(): void
+    {
+        // A derived factory shares its dependencies, not an in-flight stack.
+        $this->guard = new ResolutionGuard();
+    }
 
     /** @throws MiddlewareResolutionExceptionInterface */
     public function createMiddleware(mixed $middleware): MiddlewareInterface
@@ -40,35 +51,32 @@ final readonly class MiddlewareFactory
             $middleware = $snapshot;
         }
 
-        return $this->resolve($middleware, [], []);
+        return $this->resolve($middleware);
     }
 
-    /**
-     * @param array<string, true> $activeServices
-     * @param array<int, true> $activeGroups
-     */
-    private function resolve(mixed $definition, array $activeServices, array $activeGroups): MiddlewareInterface
+    private function resolve(mixed $definition): MiddlewareInterface
     {
+        if ($definition instanceof MiddlewareInterface) {
+            return $definition;
+        }
+
+        if ($definition instanceof RequestHandlerInterface) {
+            return new RequestHandlerAdapter($definition);
+        }
+
+        $key = match (true) {
+            is_string($definition) => 'identifier:' . $definition,
+            $definition instanceof MiddlewareGroup => 'group:' . spl_object_id($definition),
+            default => null,
+        };
+        $context = $key === null ? null : $this->guard->enter($key, $definition);
+
         try {
-            if ($definition instanceof MiddlewareInterface) {
-                return $definition;
-            }
-
-            if ($definition instanceof RequestHandlerInterface) {
-                return new RequestHandlerAdapter($definition);
-            }
-
             if ($definition instanceof MiddlewareGroup) {
-                $id = spl_object_id($definition);
-                if (isset($activeGroups[$id])) {
-                    throw new MiddlewareResolutionException($definition, 'Cyclic middleware group.');
-                }
-                $activeGroups[$id] = true;
-
                 $resolved = [];
                 foreach ($definition as $index => $member) {
                     try {
-                        $resolved[] = $this->resolve($member, $activeServices, $activeGroups);
+                        $resolved[] = $this->resolve($member);
                     } catch (MiddlewareResolutionExceptionInterface $e) {
                         throw new MiddlewareResolutionException(
                             $definition,
@@ -87,20 +95,14 @@ final readonly class MiddlewareFactory
             }
 
             if (is_string($definition) && $this->services !== null) {
-                $key = 'service:' . $definition;
-                if (isset($activeServices[$key])) {
-                    throw new MiddlewareResolutionException($definition, 'Cyclic middleware service definition.');
-                }
-                $activeServices[$key] = true;
-
                 $resolved = $this->services->resolve(
                     $definition,
-                    function (mixed $entry) use ($activeServices, $activeGroups): MiddlewareInterface {
+                    function (mixed $entry): MiddlewareInterface {
                         if ($entry instanceof MiddlewareInterface
                             || $entry instanceof RequestHandlerInterface
                             || $entry instanceof MiddlewareGroup
                         ) {
-                            return $this->resolve($entry, $activeServices, $activeGroups);
+                            return $this->resolve($entry);
                         }
                         if ($this->callables !== null && (is_array($entry) || is_callable($entry))) {
                             return $this->callables->adapt($entry);
@@ -127,6 +129,10 @@ final readonly class MiddlewareFactory
             throw $e;
         } catch (Throwable $e) {
             throw MiddlewareResolutionException::fromPrevious($definition, $e);
+        } finally {
+            if ($key !== null && $context !== null) {
+                $this->guard->leave($context, $key);
+            }
         }
     }
 }
