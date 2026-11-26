@@ -9,6 +9,7 @@ use Componenta\Config\Environment;
 use Componenta\DI\CallableExecutorInterface;
 use Componenta\DI\ContainerFactory;
 use Componenta\Http\Middleware\MiddlewareFactory;
+use Componenta\Http\Middleware\Adapter\CallableAdapter;
 use Componenta\Http\Middleware\Resolver\CallableResolver;
 use Componenta\Http\Middleware\Resolver\CompositeResolver;
 use Componenta\Http\Middleware\Resolver\ServiceResolver;
@@ -35,7 +36,7 @@ final class ReplacementTarget
     }
 }
 
-it('selects a service callable before autoload code can change referenced receiver slots', function (): void {
+it('selects a callable before autoload code can change referenced receiver slots', function (bool $throughService): void {
     $alias = __NAMESPACE__ . '\\Pending_' . bin2hex(random_bytes(8));
     $owner = $alias;
     $method = 'run';
@@ -61,7 +62,9 @@ it('selects a service callable before autoload code can change referenced receiv
     };
     spl_autoload_register($loader);
     try {
-        $middleware = $factory->createMiddleware('snapshot');
+        $middleware = $throughService
+            ? $factory->createMiddleware('snapshot')
+            : CallableAdapter::fromCallable($entry, $container->get(CallableExecutorInterface::class));
         $request = new ServerRequest('GET', '/');
 
         expect($owner)->toBe(ReplacementTarget::class)
@@ -71,4 +74,4 @@ it('selects a service callable before autoload code can change referenced receiv
     } finally {
         spl_autoload_unregister($loader);
     }
-});
+})->with(['service entry' => [true], 'explicit adapter' => [false]]);

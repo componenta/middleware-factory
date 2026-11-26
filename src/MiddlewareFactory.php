@@ -92,7 +92,7 @@ final readonly class MiddlewareFactory
                         ) {
                             return $this->resolve($entry, $activeServices, $activeGroups);
                         }
-                        if ($this->callables !== null && is_callable($entry)) {
+                        if ($this->callables !== null && (is_array($entry) || is_callable($entry))) {
                             return $this->callables->adapt($entry);
                         }
 

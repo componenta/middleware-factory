@@ -25,7 +25,7 @@ final readonly class CallableAdapter implements MiddlewareInterface
      * @param (Closure(mixed): ResponseInterface)|null $normalizer
      */
     private function __construct(
-        callable $callable,
+        callable|array $callable,
         private CallableInvokerInterface $invoker,
         private Closure $parameters,
         private ?Closure $normalizer = null,
@@ -37,6 +37,15 @@ final readonly class CallableAdapter implements MiddlewareInterface
                 ? explode('::', $callable, 2)
                 : Closure::fromCallable($callable);
         } elseif (is_array($callable)) {
+            if (count($callable) !== 2
+                || !array_key_exists(0, $callable)
+                || !array_key_exists(1, $callable)
+            ) {
+                throw new InvalidArgumentException('Invalid middleware callable pair.');
+            }
+
+            // PHP callable validation can invoke an autoloader. The array arm
+            // of the parameter type lets us detach reference slots before it does.
             $callable = [$callable[0], $callable[1]];
         }
         if (!is_callable($callable)) {
@@ -47,7 +56,7 @@ final readonly class CallableAdapter implements MiddlewareInterface
 
     /** @param (Closure(mixed): ResponseInterface)|null $normalizer */
     public static function fromCallable(
-        callable $callable,
+        callable|array $callable,
         CallableInvokerInterface $invoker,
         ?Closure $normalizer = null,
     ): self {
@@ -62,7 +71,7 @@ final readonly class CallableAdapter implements MiddlewareInterface
         );
     }
 
-    public static function singlePassMiddleware(callable $callable, CallableInvokerInterface $invoker): self
+    public static function singlePassMiddleware(callable|array $callable, CallableInvokerInterface $invoker): self
     {
         return new self(
             $callable,
@@ -75,7 +84,7 @@ final readonly class CallableAdapter implements MiddlewareInterface
     }
 
     public static function doublePassMiddleware(
-        callable $callable,
+        callable|array $callable,
         CallableInvokerInterface $invoker,
         ResponseFactoryInterface $factory,
     ): self {

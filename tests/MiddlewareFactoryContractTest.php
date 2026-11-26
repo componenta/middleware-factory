@@ -291,3 +291,29 @@ it('detaches collection slots from caller-owned references', function () {
 
     expect($group->toArray())->toBe(['first', 'second']);
 });
+
+
+it('reports the original service definition type and retains the invalid entry diagnostic', function (): void {
+    $factory = new MiddlewareFactory(
+        new CompositeResolver(),
+        new ServiceResolver(services(['invalid' => 42])),
+        new CallableResolver(executor()),
+    );
+
+    $caught = null;
+    try {
+        $factory->createMiddleware('invalid');
+    } catch (MiddlewareResolutionException $error) {
+        $caught = $error;
+    }
+
+    expect($caught)->toBeInstanceOf(MiddlewareResolutionException::class)
+        ->and($caught->definitionType)->toBe('string')
+        ->and($caught->getPrevious())->toBeInstanceOf(MiddlewareResolutionException::class)
+        ->and($caught->getPrevious()->definitionType)->toBe('int');
+});
+
+it('rejects malformed native callable pairs without truncating additional elements', function (): void {
+    expect(fn () => CallableAdapter::fromCallable([new \stdClass(), 'run', 'extra'], executor()))
+        ->toThrow(\InvalidArgumentException::class, 'Invalid middleware callable pair.');
+});
