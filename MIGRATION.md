@@ -1,6 +1,6 @@
 # Migrating from 2.x to 3.x
 
-- Update PHP to 8.5.13+, Config to 4.x, DI to 6.x, and Pipeline to 1.1.x.
+- Update PHP to 8.5.13+, Config to 4.x, DI to 6.x, and Pipeline to 1.1.1 or later within 1.x.
 - `MiddlewareFactory::createMiddleware()`, `MiddlewareGroup::with()`, `withMany()` and `fromArray()` remain available. Use `toArray()` or iteration rather than the removed public `middlewares` property.
 - `MiddlewareFactoryAwareInterface` and `MiddlewareGroupResolver` are removed. Group resolution belongs to the factory; extension resolvers no longer receive a factory back-reference.
 - `CompositeResolver::add()` is replaced by immutable `with()`. Use the returned chain when constructing a factory. Do not mutate a registered chain.

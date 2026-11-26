@@ -134,7 +134,7 @@ it('allows applications to replace the callable resolver factory with an explici
 });
 
 
-it('uses an explicitly configured pipeline factory for group resolution', function (): void {
+it('uses an explicitly configured pipeline factory for group resolution', function (bool $bothProviders): void {
     $custom = new class implements PipelineFactoryInterface {
         public int $calls = 0;
 
@@ -148,13 +148,13 @@ it('uses an explicitly configured pipeline factory for group resolution', functi
     };
     $composition = (new ConfigFactory())->create(
         new Environment([]),
-        new ConfigProvider(),
-        static fn (): array => [
+        ...($bothProviders ? [new PipelineConfigProvider(), new ConfigProvider()] : [new ConfigProvider()]),
+        ...[static fn (): array => [
             ConfigKey::DEPENDENCIES => [
                 ConfigKey::ALIASES => [PipelineFactoryInterface::class => 'application.pipeline.factory'],
                 ConfigKey::SERVICES => ['application.pipeline.factory' => $custom],
             ],
-        ],
+        ]],
     );
     $container = (new ContainerFactory())->create($composition->config, $composition->dependencies)->container;
     $factory = $container->get(MiddlewareFactory::class);
@@ -171,4 +171,4 @@ it('uses an explicitly configured pipeline factory for group resolution', functi
     expect($container->get(PipelineFactoryInterface::class))->toBe($custom)
         ->and($custom->calls)->toBe(1)
         ->and($group->process(new ServerRequest('GET', '/custom'), $terminal)->getStatusCode())->toBe(201);
-});
+})->with(['factory provider' => [false], 'both providers' => [true]]);

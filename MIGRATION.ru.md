@@ -1,6 +1,6 @@
 # Переход с версии 2.x на 3.x
 
-- Обновите PHP до 8.5.13+, Config до 4.x, DI до 6.x и Pipeline до 1.1.x.
+- Обновите PHP до 8.5.13+, Config до 4.x, DI до 6.x и Pipeline до 1.1.1 или более новой версии в пределах 1.x.
 - Методы `MiddlewareFactory::createMiddleware()`, `MiddlewareGroup::with()`, `withMany()` и `fromArray()` сохранены. Вместо удалённого публичного свойства `middlewares` используйте `toArray()` или итерацию.
 - Удалены `MiddlewareFactoryAwareInterface` и `MiddlewareGroupResolver`. Группы разрешаются самой фабрикой; обратная ссылка резолверов на фабрику не используется.
 - Метод `CompositeResolver::add()` заменён неизменяемой операцией `with()`. Используйте возвращённую цепочку при создании фабрики.

@@ -8,7 +8,7 @@ Resolves trusted middleware definitions into PSR-15 middleware. The factory is i
 composer require componenta/middleware-factory:^3.0
 ```
 
-Requires PHP 8.5.13+, Config 4, DI 6 and Pipeline 1.1. The package registers its configuration provider through `extra.componenta.config-providers`. Applications without the Componenta Composer plugin can compose `Componenta\Http\Middleware\ConfigProvider` explicitly.
+Requires PHP 8.5.13+, Config 4, DI 6 and Pipeline 1.1.1. The package registers its configuration provider through `extra.componenta.config-providers`. Applications without the Componenta Composer plugin can compose `Componenta\Http\Middleware\ConfigProvider` explicitly.
 
 ## Definitions
 
@@ -42,6 +42,8 @@ Resolution order:
 4. Configured extension resolvers are tried in order. The first non-null result wins.
 5. String service identifiers are looked up in the PSR-11 container. A present service must provide middleware, a request handler, a group or a native callable. Errors do not fall through to another interpretation of the identifier.
 6. Remaining callable definitions are resolved through DI. Supported forms follow DI's callable resolution contract.
+
+The default group factory uses `PipelineFactoryInterface`. To supply a custom implementation, override its alias in application dependency configuration after the package providers.
 
 A group is a non-empty ordered collection, not a name. Register a group under a service identifier to reference it by name. Groups accept arbitrary array or iterable keys, normalize to a list, and preserve value order. `with()` and `withMany()` return new groups; the original collection is unchanged.
 
