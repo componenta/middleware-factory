@@ -21,6 +21,7 @@ final readonly class CallableAdapter implements MiddlewareInterface
     private mixed $callable;
 
     /**
+     * @param callable|array<array-key, mixed> $callable
      * @param Closure(ServerRequestInterface, RequestHandlerInterface): array<array-key, mixed> $parameters
      * @param (Closure(mixed): ResponseInterface)|null $normalizer
      */
@@ -54,7 +55,10 @@ final readonly class CallableAdapter implements MiddlewareInterface
         $this->callable = $callable;
     }
 
-    /** @param (Closure(mixed): ResponseInterface)|null $normalizer */
+    /**
+     * @param callable|array<array-key, mixed> $callable
+     * @param (Closure(mixed): ResponseInterface)|null $normalizer
+     */
     public static function fromCallable(
         callable|array $callable,
         CallableInvokerInterface $invoker,
@@ -71,6 +75,7 @@ final readonly class CallableAdapter implements MiddlewareInterface
         );
     }
 
+    /** @param callable|array<array-key, mixed> $callable */
     public static function singlePassMiddleware(callable|array $callable, CallableInvokerInterface $invoker): self
     {
         return new self(
@@ -83,6 +88,7 @@ final readonly class CallableAdapter implements MiddlewareInterface
         );
     }
 
+    /** @param callable|array<array-key, mixed> $callable */
     public static function doublePassMiddleware(
         callable|array $callable,
         CallableInvokerInterface $invoker,

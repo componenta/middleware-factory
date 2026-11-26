@@ -41,7 +41,11 @@ final readonly class CallableResolver implements MiddlewareResolverInterface
         }
     }
 
-    /** Adapts a native callable without another service lookup. Array slots are captured before validation. */
+    /**
+     * Adapts a native callable without another service lookup. Array slots are captured before validation.
+     *
+     * @param callable|array<array-key, mixed> $callable
+     */
     public function adapt(callable|array $callable): MiddlewareInterface
     {
         return CallableAdapter::fromCallable($callable, $this->executor, $this->normalizer);
