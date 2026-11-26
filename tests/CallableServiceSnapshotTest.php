@@ -9,6 +9,7 @@ use Componenta\Config\Environment;
 use Componenta\DI\CallableExecutorInterface;
 use Componenta\DI\ContainerFactory;
 use Componenta\Http\Middleware\MiddlewareFactory;
+use Componenta\Http\Middleware\MiddlewareGroup;
 use Componenta\Http\Middleware\Adapter\CallableAdapter;
 use Componenta\Http\Middleware\Resolver\CallableResolver;
 use Componenta\Http\Middleware\Resolver\CompositeResolver;
@@ -75,3 +76,35 @@ it('selects a callable before autoload code can change referenced receiver slots
         spl_autoload_unregister($loader);
     }
 })->with(['service entry' => [true], 'explicit adapter' => [false]]);
+
+
+it('preserves the selected callable pair when group definitions are created or extended', function (string $mode): void {
+    $owner = OriginalTarget::class;
+    $method = 'run';
+    $definition = [&$owner, &$method];
+
+    $first = static fn (): ResponseInterface => new Response(204);
+    $base = new MiddlewareGroup($first);
+    $group = match ($mode) {
+        'constructor' => new MiddlewareGroup($definition),
+        'from array' => MiddlewareGroup::fromArray([$definition]),
+        'with' => $base->with($definition, prepend: true),
+        'with many' => $base->withMany([$definition], prepend: true),
+        'generator' => $base->withMany((static function () use ($definition, &$owner): \Generator {
+            yield $definition;
+            $owner = ReplacementTarget::class;
+        })(), prepend: true),
+    };
+    $owner = ReplacementTarget::class;
+
+    $composition = (new ConfigFactory())->create(new Environment([]));
+    $container = (new ContainerFactory())->create($composition->config, $composition->dependencies)->container;
+    $factory = new MiddlewareFactory(new CompositeResolver(), null, new CallableResolver($container->get(CallableExecutorInterface::class)));
+    $terminal = new class implements RequestHandlerInterface {
+        public function handle(ServerRequestInterface $request): ResponseInterface { return new Response(500); }
+    };
+
+    $middleware = $factory->createMiddleware($group);
+    expect($group->toArray()[0])->toBe([OriginalTarget::class, 'run'])
+        ->and($middleware->process(new ServerRequest('GET', '/'), $terminal)->getStatusCode())->toBe(201);
+})->with(['constructor', 'from array', 'with', 'with many', 'generator']);
