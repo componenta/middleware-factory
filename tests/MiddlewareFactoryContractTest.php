@@ -92,14 +92,23 @@ it('resolves opaque service ids and rejects invalid present entries', function (
 });
 
 it('resolves nested groups and allows repeated use of the same group', function () {
-    $group = new MiddlewareGroup(passThrough());
+    $layer = static fn (string $name): MiddlewareInterface => new class($name) implements MiddlewareInterface {
+        public function __construct(private string $name) {}
+        public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+        {
+            return $handler->handle($request)->withAddedHeader('X-Layer', $this->name);
+        }
+    };
+    $group = new MiddlewareGroup($layer('shared'));
     $factory = new MiddlewareFactory(new CompositeResolver(), new ServiceResolver(services([
         'shared' => $group,
-        'outer' => new MiddlewareGroup('shared', 'shared'),
+        'outer' => new MiddlewareGroup($layer('outer'), 'shared', $layer('middle'), 'shared'),
     ])));
     $middleware = $factory->createMiddleware('outer');
 
-    expect((string) $middleware->process(new ServerRequest('GET', '/nested'), terminal())->getBody())->toBe('/nested');
+    $response = $middleware->process(new ServerRequest('GET', '/nested'), terminal());
+    expect((string) $response->getBody())->toBe('/nested')
+        ->and($response->getHeader('X-Layer'))->toBe(['shared', 'middle', 'shared', 'outer']);
 });
 
 it('rejects service-group cycles without poisoning subsequent resolutions', function () {
