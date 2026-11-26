@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Componenta\Http\Middleware\Adapter;
 
 use Closure;
-use Componenta\DI\CallableInvokerInterface;
+use Componenta\DI\CallableExecutorInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -25,7 +25,7 @@ final readonly class CallableAdapter implements MiddlewareInterface
      */
     private function __construct(
         callable|array $callable,
-        private CallableInvokerInterface $invoker,
+        private CallableExecutorInterface $invoker,
         private ?Closure $normalizer = null,
     ) {
         // A resolved function name must not be interpreted as a service id again.
@@ -46,10 +46,21 @@ final readonly class CallableAdapter implements MiddlewareInterface
             // of the parameter type lets us detach reference slots before it does.
             $callable = [$callable[0], $callable[1]];
         }
-        if (!is_callable($callable)) {
+        if (!self::isPublicCallable($callable)) {
             throw new InvalidArgumentException('Resolved middleware target is not callable.');
         }
         $this->callable = $callable;
+    }
+
+    /** @phpstan-assert-if-true callable $value */
+    private static function isPublicCallable(mixed $value): bool
+    {
+        // The adapter's own private methods must not become valid callbacks
+        // just because validation happens inside this class.
+        static $check = null;
+        $check ??= Closure::bind(static fn (mixed $candidate): bool => is_callable($candidate), null, null);
+
+        return $check !== null && $check($value);
     }
 
     /**
@@ -58,7 +69,7 @@ final readonly class CallableAdapter implements MiddlewareInterface
      */
     public static function fromCallable(
         callable|array $callable,
-        CallableInvokerInterface $invoker,
+        CallableExecutorInterface $invoker,
         ?Closure $normalizer = null,
     ): self {
         return new self($callable, $invoker, $normalizer);

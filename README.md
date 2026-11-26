@@ -47,7 +47,7 @@ A group is a non-empty ordered collection, not a name. Register a group under a 
 
 ## Callable middleware
 
-Callable middleware is invoked by DI. The current HTTP request is supplied as request context; use `#[CurrentRequest]` to inject it, and the ordinary DI HTTP attributes to extract headers, query values or payload data. The next handler is supplied by `RequestHandlerInterface` type. A bare request type does not automatically select the current HTTP request in DI 6.
+Callable middleware requires the DI `CallableExecutorInterface`, not a native positional invoker. The current HTTP request is supplied as request context; use `#[CurrentRequest]` to inject it, and the ordinary DI HTTP attributes to extract headers, query values or payload data. The next handler is supplied by `RequestHandlerInterface` type. A bare request type does not automatically select the current HTTP request in DI 6.
 
 By default, a callable must return one of:
 
