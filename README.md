@@ -63,6 +63,8 @@ Other return values cause `UnexpectedValueException`. A normalization closure ma
 
 Request handlers are terminal by default, but an adapted request handler may explicitly delegate using the request attribute `RequestHandlerAdapter::FALLBACK_HANDLER_ATTRIBUTES_KEY`. The original request is not modified. Do not retain the request or its continuation beyond processing. Direct calls to an adapter's `handle()` do not add this attribute.
 
+For positional single-pass and double-pass compatibility, use the optional [componenta/middleware-legacy](https://github.com/componenta/middleware-legacy) package. Middleware Factory does not depend on it.
+
 ## Extension resolvers
 
 Implement `Componenta\Http\Middleware\Resolver\MiddlewareResolverInterface`. Return `null` only for an unhandled definition; throw on an attempted resolution failure. Register the resolver as a container service and list its identifier in application configuration:
