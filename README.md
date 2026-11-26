@@ -49,7 +49,7 @@ A group is a non-empty ordered collection, not a name. Register a group under a 
 
 ## Callable middleware
 
-Callables are invoked by DI. The current HTTP request is supplied as request context; use `#[CurrentRequest]` to inject it, and the ordinary DI HTTP attributes to extract headers, query values or payload data. The next handler is supplied by `RequestHandlerInterface` type. A bare request type does not automatically select the current HTTP request in DI 6.
+Standard callable middleware is invoked by DI. The current HTTP request is supplied as request context; use `#[CurrentRequest]` to inject it, and the ordinary DI HTTP attributes to extract headers, query values or payload data. The next handler is supplied by `RequestHandlerInterface` type. A bare request type does not automatically select the current HTTP request in DI 6.
 
 By default, a callable must return one of:
 
@@ -69,7 +69,7 @@ $double = CallableAdapter::doublePassMiddleware($callback, $invoker, $responseFa
 ```
 
 
-Single-pass functions receive the request and a continuation callable. Double-pass functions receive the request, a fresh response and a continuation callable accepting the request. Both use positional arguments.
+Single-pass functions receive the request and a continuation callable. Double-pass functions receive the request, a fresh response and a continuation callable accepting the request. Both supply only the legacy positional arguments, so they also work with a native callable invoker. They do not supply the DI HTTP context; use the standard adapter for request-source attributes.
 
 Request handlers are terminal by default, but an adapted request handler may explicitly delegate using the request attribute `RequestHandlerAdapter::FALLBACK_HANDLER_ATTRIBUTES_KEY`. The original request is not modified. Do not retain the request or its continuation beyond processing. Direct calls to an adapter's `handle()` do not add this attribute.
 

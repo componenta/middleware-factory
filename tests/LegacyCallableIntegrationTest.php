@@ -6,8 +6,7 @@ namespace Componenta\Http\Middleware\Tests\Legacy;
 
 use Componenta\Config\ConfigFactory;
 use Componenta\Config\Environment;
-use Componenta\DI\Attribute\CurrentRequest;
-use Componenta\DI\Attribute\Header;
+use Componenta\DI\CallableInvoker;
 use Componenta\DI\CallableExecutorInterface;
 use Componenta\DI\ContainerFactory;
 use Componenta\Http\Middleware\Adapter\CallableAdapter;
@@ -18,10 +17,10 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
-it('provides the HTTP context consistently to both explicitly selected legacy adapters', function (bool $double): void {
+it('preserves the legacy positional convention with native and DI executors', function (bool $double, bool $native): void {
     $composition = (new ConfigFactory())->create(new Environment([]));
     $container = (new ContainerFactory())->create($composition->config, $composition->dependencies)->container;
-    $executor = $container->get(CallableExecutorInterface::class);
+    $executor = $native ? new CallableInvoker() : $container->get(CallableExecutorInterface::class);
     $terminal = new class implements RequestHandlerInterface {
         public function handle(ServerRequestInterface $request): ResponseInterface
         {
@@ -30,15 +29,15 @@ it('provides the HTTP context consistently to both explicitly selected legacy ad
     };
     $middleware = $double
         ? CallableAdapter::doublePassMiddleware(
-            static function (#[CurrentRequest] ServerRequestInterface $request, ResponseInterface $response, callable $next, #[Header('X-Input')] string $input): ResponseInterface {
-                return $next($request)->withHeader('X-Output', $input);
+            static function (ServerRequestInterface $request, ResponseInterface $response, callable $next): ResponseInterface {
+                return $next($request)->withHeader('X-Output', $request->getHeaderLine('X-Input'))->withHeader('X-Initial', (string) $response->getStatusCode());
             },
             $executor,
             new Psr17Factory(),
         )
         : CallableAdapter::singlePassMiddleware(
-            static function (#[CurrentRequest] ServerRequestInterface $request, callable $next, #[Header('X-Input')] string $input): ResponseInterface {
-                return $next($request)->withHeader('X-Output', $input);
+            static function (ServerRequestInterface $request, callable $next): ResponseInterface {
+                return $next($request)->withHeader('X-Output', $request->getHeaderLine('X-Input'));
             },
             $executor,
         );
@@ -46,6 +45,8 @@ it('provides the HTTP context consistently to both explicitly selected legacy ad
     foreach (['first', 'second'] as $input) {
         $response = $middleware->process(new ServerRequest('GET', '/' . $input, ['X-Input' => $input]), $terminal);
         expect((string) $response->getBody())->toBe('/' . $input)
-            ->and($response->getHeaderLine('X-Output'))->toBe($input);
+            ->and($response->getHeaderLine('X-Output'))->toBe($input)
+            ->and($response->getHeaderLine('X-Initial'))->toBe($double ? '200' : '');
     }
-})->with(['single pass' => [false], 'double pass' => [true]]);
+})->with(['single pass' => [false], 'double pass' => [true]])
+    ->with(['DI executor' => [false], 'native invoker' => [true]]);
