@@ -7,8 +7,8 @@
 - `ClassNameResolver` is replaced by `ServiceResolver`. The default factory recognizes arbitrary container identifiers, not only implementation class names.
 - `ConfigKey::RESOLVERS` remains the ordered list of extension resolver service ids. Standard object and group definitions have precedence over extensions.
 - The resolver registered as `MiddlewareResolverInterface` is the extension chain. The factory separately supplies built-in service and callable resolution.
-- Use `#[ComponentaDIAttributeCurrentRequest]` for the current request. An unannotated request type is not the HTTP context in DI 6.
-- `CallableAdapter::fromCallable()` replaces direct construction. Use explicit single-pass or double-pass adapter methods instead of configuring `LegacyCallableResolver`.
+- Use `#[Componenta\DI\Attribute\CurrentRequest]` for the current request. An unannotated request type is not the HTTP context in DI 6.
+- `CallableAdapter::fromCallable()` replaces direct construction. `LegacyCallableResolver`, `singlePassMiddleware()` and `doublePassMiddleware()` are removed without replacement. Rewrite positional middleware as a PSR-15 `MiddlewareInterface` implementation or a DI callable using `#[CurrentRequest]` and `RequestHandlerInterface`. Create responses explicitly when needed; no response or callable continuation is automatically supplied.
 - Arbitrary callable return values are no longer serialized implicitly. To retain this behavior, configure a normalization closure returning `ResponseInterface`. Applications using HTTP Responder can opt in with `static fn (mixed $value): ResponseInterface => $responder->respond(content: $value)` and register the configured `CallableResolver` as a service. The application owns the Responder dependency.
 - `MiddlewareResolutionExceptionInterface::$middleware` is replaced with `$definitionType`. Update custom exception implementations. The underlying cause is still exposed via `getPrevious()`.
 - Request handler continuation attributes retain their existing semantics.

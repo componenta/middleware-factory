@@ -6,7 +6,6 @@ namespace Componenta\Http\Middleware\Adapter;
 
 use Closure;
 use Componenta\DI\CallableInvokerInterface;
-use Psr\Http\Message\ResponseFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -14,7 +13,7 @@ use Psr\Http\Server\RequestHandlerInterface;
 use InvalidArgumentException;
 use UnexpectedValueException;
 
-/** Adapts a resolved callable to PSR-15. Legacy signatures require explicit opt-in. */
+/** Adapts a resolved callable to PSR-15 using DI parameter resolution. */
 final readonly class CallableAdapter implements MiddlewareInterface
 {
     /** @var callable */
@@ -22,13 +21,11 @@ final readonly class CallableAdapter implements MiddlewareInterface
 
     /**
      * @param callable|array<array-key, mixed> $callable
-     * @param Closure(ServerRequestInterface, RequestHandlerInterface): array<array-key, mixed> $parameters
      * @param (Closure(mixed): ResponseInterface)|null $normalizer
      */
     private function __construct(
         callable|array $callable,
         private CallableInvokerInterface $invoker,
-        private Closure $parameters,
         private ?Closure $normalizer = null,
     ) {
         // A resolved function name must not be interpreted as a service id again.
@@ -64,50 +61,15 @@ final readonly class CallableAdapter implements MiddlewareInterface
         CallableInvokerInterface $invoker,
         ?Closure $normalizer = null,
     ): self {
-        return new self(
-            $callable,
-            $invoker,
-            static fn (ServerRequestInterface $request, RequestHandlerInterface $handler): array => [
-                ServerRequestInterface::class => $request,
-                RequestHandlerInterface::class => $handler,
-            ],
-            $normalizer,
-        );
-    }
-
-    /** @param callable|array<array-key, mixed> $callable */
-    public static function singlePassMiddleware(callable|array $callable, CallableInvokerInterface $invoker): self
-    {
-        return new self(
-            $callable,
-            $invoker,
-            static fn (ServerRequestInterface $request, RequestHandlerInterface $handler): array => [
-                $request,
-                static fn (ServerRequestInterface $nextRequest): ResponseInterface => $handler->handle($nextRequest),
-            ],
-        );
-    }
-
-    /** @param callable|array<array-key, mixed> $callable */
-    public static function doublePassMiddleware(
-        callable|array $callable,
-        CallableInvokerInterface $invoker,
-        ResponseFactoryInterface $factory,
-    ): self {
-        return new self(
-            $callable,
-            $invoker,
-            static fn (ServerRequestInterface $request, RequestHandlerInterface $handler): array => [
-                $request,
-                $factory->createResponse(),
-                static fn (ServerRequestInterface $nextRequest): ResponseInterface => $handler->handle($nextRequest),
-            ],
-        );
+        return new self($callable, $invoker, $normalizer);
     }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        $result = $this->invoker->call($this->callable, ($this->parameters)($request, $handler));
+        $result = $this->invoker->call($this->callable, [
+            ServerRequestInterface::class => $request,
+            RequestHandlerInterface::class => $handler,
+        ]);
 
         if ($result instanceof ResponseInterface) {
             return $result;

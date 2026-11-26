@@ -8,8 +8,7 @@ Resolves trusted middleware definitions into PSR-15 middleware. The factory is i
 composer require componenta/middleware-factory:^3.0
 ```
 
-
-Requires PHP 8.5.13+, Config 4, DI 6 and Pipeline 1.1. The package registers its configuration provider through `extra.componenta.config-providers`. Applications without the Componenta Composer plugin can compose `ComponentaHttpMiddlewareConfigProvider` explicitly.
+Requires PHP 8.5.13+, Config 4, DI 6 and Pipeline 1.1. The package registers its configuration provider through `extra.componenta.config-providers`. Applications without the Componenta Composer plugin can compose `Componenta\Http\Middleware\ConfigProvider` explicitly.
 
 ## Definitions
 
@@ -35,7 +34,6 @@ $middleware = $factory->createMiddleware($group);
 $response = $middleware->process($request, $terminal);
 ```
 
-
 Resolution order:
 
 1. Existing PSR-15 middleware is returned unchanged.
@@ -49,7 +47,7 @@ A group is a non-empty ordered collection, not a name. Register a group under a 
 
 ## Callable middleware
 
-Standard callable middleware is invoked by DI. The current HTTP request is supplied as request context; use `#[CurrentRequest]` to inject it, and the ordinary DI HTTP attributes to extract headers, query values or payload data. The next handler is supplied by `RequestHandlerInterface` type. A bare request type does not automatically select the current HTTP request in DI 6.
+Callable middleware is invoked by DI. The current HTTP request is supplied as request context; use `#[CurrentRequest]` to inject it, and the ordinary DI HTTP attributes to extract headers, query values or payload data. The next handler is supplied by `RequestHandlerInterface` type. A bare request type does not automatically select the current HTTP request in DI 6.
 
 By default, a callable must return one of:
 
@@ -59,23 +57,11 @@ By default, a callable must return one of:
 
 Other return values cause `UnexpectedValueException`. A normalization closure may be explicitly configured on `CallableResolver` or passed to `CallableAdapter::fromCallable()`. Its result must be a PSR-7 response; failures propagate unchanged. There is no implicit responder service lookup.
 
-Legacy single-pass and double-pass functions require an explicit adapter:
-
-```php
-use Componenta\Http\Middleware\Adapter\CallableAdapter;
-
-$single = CallableAdapter::singlePassMiddleware($callback, $invoker);
-$double = CallableAdapter::doublePassMiddleware($callback, $invoker, $responseFactory);
-```
-
-
-Single-pass functions receive the request and a continuation callable. Double-pass functions receive the request, a fresh response and a continuation callable accepting the request. Both supply only the legacy positional arguments, so they also work with a native callable invoker. They do not supply the DI HTTP context; use the standard adapter for request-source attributes.
-
 Request handlers are terminal by default, but an adapted request handler may explicitly delegate using the request attribute `RequestHandlerAdapter::FALLBACK_HANDLER_ATTRIBUTES_KEY`. The original request is not modified. Do not retain the request or its continuation beyond processing. Direct calls to an adapter's `handle()` do not add this attribute.
 
 ## Extension resolvers
 
-Implement `ResolverMiddlewareResolverInterface`. Return `null` only for an unhandled definition; throw on an attempted resolution failure. Register the resolver as a container service and list its identifier in application configuration:
+Implement `Componenta\Http\Middleware\Resolver\MiddlewareResolverInterface`. Return `null` only for an unhandled definition; throw on an attempted resolution failure. Register the resolver as a container service and list its identifier in application configuration:
 
 ```php
 use Componenta\Http\Middleware\ConfigKey;
@@ -85,10 +71,9 @@ return [
 ];
 ```
 
-
 The extension chain is immutable. `CompositeResolver::with()` creates a new chain; a previously constructed factory is not modified. Extension resolvers are not invoked for existing PSR-15 objects or groups.
 
-Resolution failures implement `ExceptionMiddlewareResolutionExceptionInterface`. Its diagnostic `definitionType` describes the input type without retaining raw definitions. The original cause is available through `getPrevious()`. Do not expose exception chains to HTTP clients.
+Resolution failures implement `Componenta\Http\Middleware\Exception\MiddlewareResolutionExceptionInterface`. Its diagnostic `definitionType` describes the input type without retaining raw definitions. The original cause is available through `getPrevious()`. Do not expose exception chains to HTTP clients.
 
 Only trusted application configuration and code should supply middleware definitions. Do not use untrusted HTTP request data as a service identifier or callable.
 
@@ -99,6 +84,5 @@ composer test
 composer phpstan
 composer benchmark
 ```
-
 
 See [migration instructions](MIGRATION.md) for upgrading from 2.x.

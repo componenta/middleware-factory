@@ -14,7 +14,6 @@ use Componenta\Http\Middleware\Resolver\CompositeResolver;
 use Componenta\Http\Middleware\Resolver\MiddlewareResolverInterface;
 use Componenta\Http\Middleware\Resolver\ServiceResolver;
 use Nyholm\Psr7\Response;
-use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\ServerRequest;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -225,23 +224,6 @@ it('does not fall through after container failure', function () {
 
     expect($caught)->toBeInstanceOf(MiddlewareResolutionException::class)
         ->and($caught->getPrevious())->toBe($error);
-});
-
-it('adapts explicitly selected legacy middleware signatures', function () {
-    $request = new ServerRequest('GET', '/legacy');
-    $single = CallableAdapter::singlePassMiddleware(
-        static fn (ServerRequestInterface $req, callable $next): ResponseInterface => $next($req),
-        executor(),
-    );
-    $double = CallableAdapter::doublePassMiddleware(
-        static function (ServerRequestInterface $req, ResponseInterface $response, callable $next): ResponseInterface {
-            return $next($req)->withHeader('X-Initial-Status', (string) $response->getStatusCode());
-        },
-        executor(),
-        new Psr17Factory(),
-    );
-    expect((string) $single->process($request, terminal())->getBody())->toBe('/legacy')
-        ->and($double->process($request, terminal())->getHeaderLine('X-Initial-Status'))->toBe('200');
 });
 
 it('normalizes only non-PSR-15 results and propagates exceptions from the target', function () {
