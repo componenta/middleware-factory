@@ -11,6 +11,8 @@ use Componenta\Http\Middleware\Resolver\CompositeResolver;
 use Componenta\Http\Middleware\Resolver\MiddlewareResolverInterface;
 use Componenta\Http\Middleware\Resolver\ServiceResolver;
 use LogicException;
+use Fiber;
+use WeakReference;
 use Psr\Container\ContainerInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
@@ -175,5 +177,87 @@ it('does not copy an active resolution guard into a cloned factory', function ()
     $factory = new MiddlewareFactory(new CompositeResolver($extension));
     $extension->factory = $factory;
 
+    expect($factory->createMiddleware('shared')->process(new ServerRequest('GET', '/'), terminal())->getStatusCode())->toBe(201);
+});
+
+
+final class CallbackTarget
+{
+    public function __invoke(): ResponseInterface
+    {
+        return new Response(204);
+    }
+
+    public static function run(): ResponseInterface
+    {
+        return new Response(204);
+    }
+
+    public function instance(): ResponseInterface
+    {
+        return new Response(204);
+    }
+}
+
+it('rejects reentrant cycles for standard callable definitions', function (string $form): void {
+    $target = new CallbackTarget();
+    $definition = match ($form) {
+        'static pair' => [CallbackTarget::class, 'run'],
+        'object pair' => [$target, 'instance'],
+        'invokable object' => $target,
+        'closure' => static fn (): ResponseInterface => new Response(204),
+    };
+    $extension = new class implements MiddlewareResolverInterface {
+        public MiddlewareFactory $factory;
+        public int $calls = 0;
+
+        public function resolve(mixed $middleware): ?MiddlewareInterface
+        {
+            if (++$this->calls > 1) {
+                throw new LogicException('The test recursion limit was reached.');
+            }
+            return $this->factory->createMiddleware($middleware);
+        }
+    };
+    $factory = new MiddlewareFactory(new CompositeResolver($extension));
+    $extension->factory = $factory;
+
+    $caught = null;
+    try {
+        $factory->createMiddleware($definition);
+    } catch (MiddlewareResolutionExceptionInterface $failure) {
+        $caught = $failure;
+    }
+    expect($caught)->toBeInstanceOf(MiddlewareResolutionExceptionInterface::class)
+        ->and($extension->calls)->toBe(1)
+        ->and(implode(' ', causeMessages($caught)))->toContain('Cyclic middleware');
+})->with(['static pair', 'object pair', 'invokable object', 'closure']);
+
+it('releases a discarded suspended resolution context', function (): void {
+    $extension = new class implements MiddlewareResolverInterface {
+        public bool $suspend = true;
+
+        public function resolve(mixed $middleware): ?MiddlewareInterface
+        {
+            if ($this->suspend) {
+                Fiber::suspend('paused');
+            }
+            return new class implements MiddlewareInterface {
+                public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+                {
+                    return new Response(201);
+                }
+            };
+        }
+    };
+    $factory = new MiddlewareFactory(new CompositeResolver($extension));
+    $fiber = new Fiber(fn () => $factory->createMiddleware('shared'));
+    $reference = WeakReference::create($fiber);
+    expect($fiber->start())->toBe('paused');
+    unset($fiber);
+    gc_collect_cycles();
+
+    expect($reference->get())->toBeNull();
+    $extension->suspend = false;
     expect($factory->createMiddleware('shared')->process(new ServerRequest('GET', '/'), terminal())->getStatusCode())->toBe(201);
 });
