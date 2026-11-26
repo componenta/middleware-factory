@@ -60,7 +60,7 @@ final readonly class CallableAdapter implements MiddlewareInterface
         static $check = null;
         $check ??= Closure::bind(static fn (mixed $candidate): bool => is_callable($candidate), null, null);
 
-        return $check !== null && $check($value);
+        return $check instanceof Closure && $check($value) === true;
     }
 
     /**
