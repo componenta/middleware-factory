@@ -20,6 +20,9 @@ use Psr\Container\ContainerInterface;
 use Componenta\Http\Middleware\MiddlewareFactory;
 use Componenta\Http\Middleware\MiddlewareGroup;
 use Componenta\Http\Middleware\PipelineFactoryInterface;
+use Componenta\Http\Middleware\PipelineInterface;
+use Componenta\Http\Middleware\Pipeline;
+use Componenta\Http\Middleware\EmptyPipelineHandler;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use Psr\Http\Message\ResponseInterface;
@@ -128,4 +131,44 @@ it('allows applications to replace the callable resolver factory with an explici
         expect($response->getStatusCode())->toBe(201)
             ->and(json_decode((string) $response->getBody(), true, flags: JSON_THROW_ON_ERROR))->toBe(['path' => $path]);
     }
+});
+
+
+it('uses an explicitly configured pipeline factory for group resolution', function (): void {
+    $custom = new class implements PipelineFactoryInterface {
+        public int $calls = 0;
+
+        public function createMiddlewarePipeline(
+            iterable $middlewares = [],
+            ?RequestHandlerInterface $fallbackHandler = null,
+        ): PipelineInterface {
+            ++$this->calls;
+            return new Pipeline($middlewares, $fallbackHandler ?? new EmptyPipelineHandler());
+        }
+    };
+    $composition = (new ConfigFactory())->create(
+        new Environment([]),
+        new ConfigProvider(),
+        static fn (): array => [
+            ConfigKey::DEPENDENCIES => [
+                ConfigKey::ALIASES => [PipelineFactoryInterface::class => 'application.pipeline.factory'],
+                ConfigKey::SERVICES => ['application.pipeline.factory' => $custom],
+            ],
+        ],
+    );
+    $container = (new ContainerFactory())->create($composition->config, $composition->dependencies)->container;
+    $factory = $container->get(MiddlewareFactory::class);
+    $group = $factory->createMiddleware(new MiddlewareGroup(
+        static fn (): ResponseInterface => new Response(201),
+    ));
+    $terminal = new class implements RequestHandlerInterface {
+        public function handle(ServerRequestInterface $request): ResponseInterface
+        {
+            throw new \LogicException('The group should produce a response without delegation.');
+        }
+    };
+
+    expect($container->get(PipelineFactoryInterface::class))->toBe($custom)
+        ->and($custom->calls)->toBe(1)
+        ->and($group->process(new ServerRequest('GET', '/custom'), $terminal)->getStatusCode())->toBe(201);
 });
