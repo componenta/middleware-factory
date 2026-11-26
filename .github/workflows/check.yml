@@ -25,3 +25,4 @@ jobs:
           composer require --no-update 'componenta/di:dev-main as 6.0.x-dev' 'componenta/pipeline:dev-fix/pipeline-audit as 1.1.x-dev'
           composer update --no-interaction --prefer-dist
       - run: composer check
+      - run: composer benchmark

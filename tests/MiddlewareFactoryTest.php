@@ -38,5 +38,13 @@ it('adapts a request handler into a terminal middleware', function () {
 
 it('throws a typed failure for an unresolved definition', function () {
     $factory = new MiddlewareFactory(new CompositeResolver());
-    expect(fn () => $factory->createMiddleware('missing.middleware'))->toThrow(MiddlewareResolutionExceptionInterface::class);
+    $caught = null;
+    try {
+        $factory->createMiddleware('missing.middleware');
+    } catch (MiddlewareResolutionExceptionInterface $e) {
+        $caught = $e;
+    }
+
+    expect($caught)->toBeInstanceOf(MiddlewareResolutionExceptionInterface::class)
+        ->and($caught->definitionType)->toBe('string');
 });

@@ -11,6 +11,9 @@ use Componenta\DI\Attribute\CurrentRequest;
 use Componenta\DI\Attribute\Header;
 use Componenta\DI\ContainerFactory;
 use Componenta\Http\Middleware\ConfigProvider;
+use Componenta\Http\Middleware\ConfigKey as MiddlewareConfigKey;
+use Componenta\Http\Middleware\PipelineConfigProvider;
+use Componenta\Http\Middleware\Resolver\MiddlewareResolverInterface;
 use Componenta\Http\Middleware\MiddlewareFactory;
 use Componenta\Http\Middleware\MiddlewareGroup;
 use Componenta\Http\Middleware\PipelineFactoryInterface;
@@ -53,4 +56,38 @@ it('configures the factory, opaque service identifiers, callable injection and p
             ->and($response->getHeaderLine('X-Resolved'))->toBe($input)
             ->and((string) $response->getBody())->toBe('/' . $input);
     }
+});
+
+
+it('composes both providers and resolves configured extension services before container entries', function () {
+    $middleware = new class implements MiddlewareInterface {
+        public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+        {
+            return new Response(202);
+        }
+    };
+    $extension = new class($middleware) implements MiddlewareResolverInterface {
+        public function __construct(private MiddlewareInterface $middleware) {}
+        public function resolve(mixed $middleware): ?MiddlewareInterface
+        {
+            return $middleware === 'custom' ? $this->middleware : null;
+        }
+    };
+    $composition = (new ConfigFactory())->create(
+        new Environment([]),
+        new PipelineConfigProvider(),
+        new ConfigProvider(),
+        static fn (): array => [
+            MiddlewareConfigKey::RESOLVERS => ['extension'],
+            ConfigKey::DEPENDENCIES => [ConfigKey::SERVICES => [
+                'extension' => $extension,
+                'custom' => new \stdClass(),
+            ]],
+        ],
+    );
+    $container = (new ContainerFactory())->create($composition->config, $composition->dependencies)->container;
+    $factory = $container->get(MiddlewareFactory::class);
+
+    expect($factory->createMiddleware('custom'))->toBe($middleware)
+        ->and($container->get(PipelineFactoryInterface::class))->toBeInstanceOf(PipelineFactoryInterface::class);
 });

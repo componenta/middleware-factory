@@ -280,3 +280,14 @@ it('preserves the explicit continuation attribute on adapted request handlers', 
     expect($adapter->process($request, $next)->getStatusCode())->toBe(202)
         ->and($request->getAttribute(\Componenta\Http\Middleware\Adapter\RequestHandlerAdapter::FALLBACK_HANDLER_ATTRIBUTES_KEY))->toBeNull();
 });
+
+
+it('detaches collection slots from caller-owned references', function () {
+    $first = 'first';
+    $second = 'second';
+    $group = MiddlewareGroup::fromArray(['one' => &$first, 'two' => &$second]);
+    $first = 'changed';
+    $second = 'changed';
+
+    expect($group->toArray())->toBe(['first', 'second']);
+});
