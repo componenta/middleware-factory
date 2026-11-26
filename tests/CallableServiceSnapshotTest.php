@@ -13,6 +13,9 @@ use Componenta\Http\Middleware\MiddlewareGroup;
 use Componenta\Http\Middleware\Adapter\CallableAdapter;
 use Componenta\Http\Middleware\Resolver\CallableResolver;
 use Componenta\Http\Middleware\Resolver\CompositeResolver;
+use Componenta\Http\Middleware\Resolver\MiddlewareResolverInterface;
+use Psr\Http\Server\MiddlewareInterface;
+use Fiber;
 use Componenta\Http\Middleware\Resolver\ServiceResolver;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
@@ -108,3 +111,35 @@ it('preserves the selected callable pair when group definitions are created or e
     expect($group->toArray()[0])->toBe([OriginalTarget::class, 'run'])
         ->and($middleware->process(new ServerRequest('GET', '/'), $terminal)->getStatusCode())->toBe(201);
 })->with(['constructor', 'from array', 'with', 'with many', 'generator']);
+
+
+it('keeps the original callable definition while an extension resolver suspends', function (): void {
+    $owner = OriginalTarget::class;
+    $method = 'run';
+    $definition = [&$owner, &$method];
+
+    $extension = new class implements MiddlewareResolverInterface {
+        public function resolve(mixed $middleware): ?MiddlewareInterface
+        {
+            if (is_array($middleware)) {
+                Fiber::suspend($middleware[0]);
+            }
+
+            return null;
+        }
+    };
+    $composition = (new ConfigFactory())->create(new Environment([]));
+    $container = (new ContainerFactory())->create($composition->config, $composition->dependencies)->container;
+    $factory = new MiddlewareFactory(new CompositeResolver($extension), null, new CallableResolver($container->get(CallableExecutorInterface::class)));
+    $terminal = new class implements RequestHandlerInterface {
+        public function handle(ServerRequestInterface $request): ResponseInterface { return new Response(500); }
+    };
+
+    $fiber = new Fiber(fn () => $factory->createMiddleware($definition));
+    expect($fiber->start())->toBe(OriginalTarget::class);
+    $owner = ReplacementTarget::class;
+    $fiber->resume();
+
+    $middleware = $fiber->getReturn();
+    expect($middleware->process(new ServerRequest('GET', '/'), $terminal)->getStatusCode())->toBe(201);
+});
